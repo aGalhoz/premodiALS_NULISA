@@ -89,13 +89,13 @@ protein_data <- read_excel("data input/P004_BSHRI_NULISAseq_CNSDiseasePanel_NPQC
 protein_data_updated <- read_excel("data input/UPDATED_P004_NPQ.xlsx")
 protein_data_old <- protein_data_updated
 
-# new data from Marisa 02-09-2025
-protein_data_updated <- read_excel("data input/Updated_P004_NPQ_08292025.xlsx")
+# new data from Marisa 04-09-2025
+protein_data_updated <- read_excel("data input/Updated_P004_NPQ_09042025.xlsx")
 
 protein_data <- protein_data_updated
 
 # target detectability
-target_detectability <- read_excel("data input/Updated_P004_NPQ_08292025.xlsx", 
+target_detectability <- read_excel("data input/Updated_P004_NPQ_09042025.xlsx", 
            sheet = "Target Detectability")
 
 # Patient age and sex

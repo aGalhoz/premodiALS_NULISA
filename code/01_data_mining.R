@@ -67,15 +67,15 @@ samples_CSF <- protein_data_IDs[!is.na(protein_data_IDs$type),] %>%
 target_unique <- protein_data_IDs$Target %>% unique() #127 targets
 
 ##### PGMC mutations and controls
-samples_CTR_PGMC_ID_type = sample_ID_info %>%
+samples_PGMC_CTR_ID_type = sample_ID_info %>%
   rename(ParticipantCode = `Optional Informarion (patient ID)`) %>%
   left_join(do.call("rbind", list(CTR_ID, PGMC_mutations_ID))) 
 
 # get protein data with status information
-protein_data_CTR_PGMC_IDs <- protein_data %>%
+protein_data_PGMC_CTR_IDs <- protein_data %>%
   filter(SampleType == "Sample") %>%
   select(SampleName,SampleMatrixType,Target,UniProtID,ProteinName,NPQ) %>%
-  left_join(samples_CTR_PGMC_ID_type %>% select(`Sample ID`,type) %>% rename(SampleName = `Sample ID`))
+  left_join(samples_PGMC_CTR_ID_type %>% select(`Sample ID`,type) %>% rename(SampleName = `Sample ID`))
 
 ##### Correlation plots between fluids
 protein_data_IDs_SERUM <- protein_data %>%
@@ -94,7 +94,6 @@ protein_data_IDs_CSF <- protein_data %>%
   summarise(NPQ_CSF = mean(NPQ)) %>%
   distinct()
 
-
 protein_data_IDs_PLASMA <- protein_data %>%
   filter(SampleMatrixType == "PLASMA") %>%
   select(NPQ,Target,UniProtID) %>%
@@ -103,50 +102,82 @@ protein_data_IDs_PLASMA <- protein_data %>%
   summarise(NPQ_PLASMA = mean(NPQ)) %>%
   distinct()
 
+# function to create correlation plot
+corr_plot <- function(data, x_col, y_col, title, reg_color, hist_color){
+  
+  # Compute Pearson correlation
+  cor_test <- cor.test(data[[x_col]], data[[y_col]], use = "complete.obs")
+  r_val <- round(cor_test$estimate, 2)
+  p_val <- ifelse(cor_test$p.value < 0.001,
+                  formatC(cor_test$p.value, format = "e", digits = 2),
+                  round(cor_test$p.value, 3))
+  cor_text <- paste0("italic(R) == ", r_val, " * ',' ~ italic(p) == ", p_val)
+  
+  base_plot <- ggscatter(
+    data, x = x_col, y = y_col,
+    add = "reg.line",
+    add.params = list(color = reg_color, fill = hist_color),
+    conf.int = TRUE
+  ) +
+    annotate(geom = "text",
+      x = min(data[[x_col]], na.rm = TRUE), 
+          y = max(data[[y_col]], na.rm = TRUE) + 1, 
+          label = cor_text,
+      size = 5, hjust = 0, parse = TRUE
+    ) +
+    labs(title = title, x = x_col, y = y_col) +
+    theme(
+      plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+      axis.title = element_text(size = 16),
+      axis.text = element_text(size = 14),
+      legend.title = element_text(size = 14),
+      legend.text = element_text(size = 14)
+    ) 
+    
+  
+  # Add marginal histogram
+  ggMarginal(base_plot, type = "histogram", color = hist_color, fill = hist_color)
+}
 
 # -> Serum vs CSF
 protein_data_IDS_SERUM_CSF = merge(protein_data_IDs_SERUM,
                                    protein_data_IDs_CSF,
                                    by = c("Target","UniProtID"))
+p1 <- corr_plot(protein_data_IDS_SERUM_CSF, 
+                       "NPQ_Serum", "NPQ_CSF", "Correlation Serum vs CSF", 
+                       "blue", "lightblue")
 
-sp <- ggscatter(protein_data_IDS_SERUM_CSF, x = "NPQ_Serum", y = "NPQ_CSF",
-                add = "reg.line",  # Add regressin line
-                add.params = list(color = "blue", fill = "lightblue"), # Customize reg. line
-                conf.int = TRUE # Add confidence interval
-) + stat_cor(method = "pearson", label.x = 3, label.y = 30) +
-  labs(title = "Correlation Serum and CSF",x = "Serum",y = "CSF") 
 pdf("plots/correlation_serum_CSF.pdf")
-ggMarginal(sp,type = "histogram",color = "lightblue",fill = "lightblue")
+p1
 dev.off()
 
 # -> Plasma vs Serum
 protein_data_IDS_PLASMA_SERUM = merge(protein_data_IDs_PLASMA,
                                       protein_data_IDs_SERUM,
                                       by = c("Target","UniProtID"))
-
-sp <- ggscatter(protein_data_IDS_PLASMA_SERUM, x = "NPQ_PLASMA", y = "NPQ_Serum",
-                add = "reg.line",  # Add regressin line
-                add.params = list(color = "blue", fill = "lightblue"), # Customize reg. line
-                conf.int = TRUE # Add confidence interval
-) + stat_cor(method = "pearson", label.x = 3, label.y = 30) +
-  labs(title = "Correlation Plasma and Serum",x = "Plasma",y = "Serum") 
+p2 <- corr_plot(protein_data_IDS_PLASMA_SERUM, 
+                       "NPQ_PLASMA", "NPQ_Serum", "Correlation Plasma vs Serum", 
+                       "blue", "lightblue")
 pdf("plots/correlation_plasma_serum.pdf")
-ggMarginal(sp,type = "histogram",color = "lightblue",fill = "lightblue")
+p2
 dev.off()
 
 # -> Plasma vs CSF
 protein_data_IDS_PLASMA_CSF = merge(protein_data_IDs_PLASMA,
                                       protein_data_IDs_CSF,
                                       by = c("Target","UniProtID"))
-
-sp <- ggscatter(protein_data_IDS_PLASMA_CSF, x = "NPQ_PLASMA", y = "NPQ_CSF",
-                add = "reg.line",  # Add regressin line
-                add.params = list(color = "blue", fill = "lightblue"), # Customize reg. line
-                conf.int = TRUE # Add confidence interval
-) + stat_cor(method = "pearson", label.x = 3, label.y = 30) +
-  labs(title = "Correlation Plasma and CSF",x = "Plasma",y = "CSF") 
+p3 <- corr_plot(protein_data_IDS_PLASMA_CSF, 
+                       "NPQ_PLASMA", "NPQ_CSF", "Correlation Plasma vs CSF", 
+                       "blue", "lightblue")
 pdf("plots/correlation_plasma_CSF.pdf")
-ggMarginal(sp,type = "histogram",color = "lightblue",fill = "lightblue")
+p3
+dev.off()
+
+# -> Correlation plots all together
+combined <- plot_grid(p1, p2, p3, nrow = 1, align = "hv")
+
+pdf("plots/correlation_combined.pdf", width = 18, height = 6)
+print(combined)
 dev.off()
 
 # check differences in NPQ values depending on the plate
@@ -158,7 +189,8 @@ for (i in 1:length(unique_targets)) {
     filter(Target == target)
   protein_data_target$SampleMatrixType <- factor(protein_data_target$SampleMatrixType,
                                                  levels = c("PLASMA","SERUM","CSF","CONTROL"))
-  p <- ggboxplot(protein_data_target,x = "SampleMatrixType",y = "NPQ", add = "jitter",color = "PlateID")
+  p <- ggboxplot(protein_data_target,x = "SampleMatrixType",y = "NPQ",
+                 add = "jitter",color = "PlateID")
   pdf(paste0("plots/NPQ_fluid_plate/NPQ_",unique_targets[i],".pdf"))
   print(p)
   dev.off() 
@@ -168,9 +200,13 @@ for (i in 1:length(unique_targets)) {
 target_detectability_plate_fluid <- protein_data %>% 
   select(PlateID,SampleMatrixType,Target,NPQ) %>%
   left_join(target_detectability %>%
-              rename(Target = targetName)) %>%
-  mutate(TargetDetectability_value = NPQ - targetLOD_NPQ,
-         TargetDetectability = as.numeric(targetDetectability) * 100)
+              rename(Target = TargetName)) %>%
+  mutate(TargetDetectability_value = NPQ - TargetLOD_NPQ,
+         TargetDetectability = as.numeric(TargetDetectability) * 100)
+
+target_detectability_plate_fluid$TargetDetectability_value <- ifelse(target_detectability_plate_fluid$Target %in% c("APOE","CRP"),
+                                                                     abs(target_detectability_plate_fluid$TargetDetectability_value),
+                                                                     target_detectability_plate_fluid$TargetDetectability_value)
 
 fluids = c("CSF","PLASMA","SERUM")
 
@@ -188,10 +224,7 @@ for (i in 1:length(fluids)) {
               aes(x = Target, y = TargetDetectability_value, 
                   fill = mean_value_percentage, group = Target)) +
     geom_boxplot(outlier.shape = NA) +
-    # geom_jitter(aes(color = TargetDetectability),
-    #             width = 0.2, alpha = 0.5, size = 1) +
     scale_fill_gradient(low = "blue", high = "orange") +
-    #scale_color_gradient(low = "blue", high = "red") +
     labs(
       title = paste("Target Detectability -", fluid),
       x = "Target",
@@ -202,10 +235,14 @@ for (i in 1:length(fluids)) {
     theme_bw() +
     theme(
       text = element_text(family = "Arial Unicode MS"),
-      plot.title = element_text(hjust = 0.5),
-      axis.text.x = element_text(angle = 60, hjust = 1)
+      axis.text.x = element_text(angle = 60, hjust = 1),
+      plot.title = element_text(size = 20, hjust = 0.5),
+      axis.title = element_text(size = 18),
+      axis.text = element_text(size = 14),
+      legend.title = element_text(size = 18),
+      legend.text = element_text(size = 15)
     )
-  Cairo::CairoPDF(paste0("plots/TargetDetectability",fluid,".pdf"),width = 20)
+  Cairo::CairoPDF(paste0("plots/TargetDetectability",fluid,".pdf"),width = 28,height = 6)
   print(p)
   dev.off() 
 }
@@ -240,11 +277,15 @@ for (i in 1:length(fluids)) {
     theme_bw() +
     theme(
       text = element_text(family = "Arial Unicode MS"),
-      plot.title = element_text(hjust = 0.5),
-      axis.text.x = element_text(angle = 60, hjust = 1)
+      axis.text.x = element_text(angle = 60, hjust = 1),
+      plot.title = element_text(size = 20, hjust = 0.5),
+      axis.title = element_text(size = 18),
+      axis.text = element_text(size = 14),
+      legend.title = element_text(size = 18),
+      legend.text = element_text(size = 15)
     )
   
-  Cairo::CairoPDF(paste0("plots/TargetDetectability_byPlate_", fluid, ".pdf"), width = 20,height = 10)
+  Cairo::CairoPDF(paste0("plots/TargetDetectability_byPlate_", fluid, ".pdf"), width = 28,height = 8)
   print(p)
   dev.off()
 }

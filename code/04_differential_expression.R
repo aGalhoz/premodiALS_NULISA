@@ -25,11 +25,11 @@ DE_subgroups_plasma = DE_subgroups_plasma %>%
   mutate(log2FC_ALS_CTR = mean_NPQ_ALS- mean_NPQ_CTR,
          log2FC_ALS_PGMC = mean_NPQ_ALS-mean_NPQ_PGMC,
          log2FC_mimic_CTR = mean_NPQ_mimic - mean_NPQ_CTR,
-         log2FC_CTR_PGMC = mean_NPQ_CTR - mean_NPQ_PGMC) %>%
+         log2FC_PGMC_CTR = mean_NPQ_PGMC - mean_NPQ_CTR) %>%
   left_join(protein_pvalue_summary_plasma)
 
 # -> Plasma (PGMC subgroups)
-DE_PGMC_subgroups_plasma = protein_data_CTR_PGMC_IDs %>%
+DE_PGMC_subgroups_plasma = protein_data_PGMC_CTR_IDs %>%
   filter(SampleMatrixType == "PLASMA") %>%
   group_by(type,Target,UniProtID) %>%
   filter(!is.na(NPQ)) %>%
@@ -52,7 +52,7 @@ DE_PGMC_subgroups_plasma = DE_PGMC_subgroups_plasma %>%
   mutate(log2FC_C9orf72_CTR = mean_NPQ_C9orf72 - mean_NPQ_CTR,
          log2FC_SOD1_CTR = mean_NPQ_SOD1 - mean_NPQ_CTR,
          log2FC_C9orf72_SOD1 = mean_NPQ_C9orf72 - mean_NPQ_SOD1) %>%
-  left_join(protein_pvalue_CTR_PGMC_summary_plasma)
+  left_join(protein_pvalue_PGMC_CTR_summary_plasma)
 
 # -> CSF
 DE_subgroups_CSF = protein_data_IDs %>%
@@ -80,11 +80,11 @@ DE_subgroups_CSF = DE_subgroups_CSF %>%
   mutate(log2FC_ALS_CTR = mean_NPQ_ALS - mean_NPQ_CTR,
          log2FC_ALS_PGMC = mean_NPQ_ALS - mean_NPQ_PGMC,
          log2FC_mimic_CTR = mean_NPQ_mimic - mean_NPQ_CTR,
-         log2FC_CTR_PGMC = mean_NPQ_CTR - mean_NPQ_PGMC) %>%
+         log2FC_PGMC_CTR = mean_NPQ_PGMC - mean_NPQ_CTR) %>%
   left_join(protein_pvalue_summary_CSF)
 
 # -> CSF (PGMC subgroups)
-DE_PGMC_subgroups_CSF = protein_data_CTR_PGMC_IDs %>%
+DE_PGMC_subgroups_CSF = protein_data_PGMC_CTR_IDs %>%
   filter(SampleMatrixType == "CSF") %>%
   group_by(type,Target,UniProtID) %>%
   filter(!is.na(NPQ)) %>%
@@ -107,7 +107,7 @@ DE_PGMC_subgroups_CSF = DE_PGMC_subgroups_CSF %>%
   mutate(log2FC_C9orf72_CTR = mean_NPQ_C9orf72 - mean_NPQ_CTR,
          log2FC_SOD1_CTR = mean_NPQ_SOD1 - mean_NPQ_CTR,
          log2FC_C9orf72_SOD1 = mean_NPQ_C9orf72 - mean_NPQ_SOD1) %>%
-  left_join(protein_pvalue_CTR_PGMC_summary_CSF)
+  left_join(protein_pvalue_PGMC_CTR_summary_CSF)
 
 # -> SERUM
 DE_subgroups_SERUM = protein_data_IDs %>%
@@ -135,11 +135,11 @@ DE_subgroups_SERUM = DE_subgroups_SERUM %>%
   mutate(log2FC_ALS_CTR = mean_NPQ_ALS - mean_NPQ_CTR,
          log2FC_ALS_PGMC = mean_NPQ_ALS - mean_NPQ_PGMC,
          log2FC_mimic_CTR = mean_NPQ_mimic - mean_NPQ_CTR,
-         log2FC_CTR_PGMC = mean_NPQ_CTR - mean_NPQ_PGMC) %>%
+         log2FC_PGMC_CTR = mean_NPQ_PGMC - mean_NPQ_CTR) %>%
   left_join(protein_pvalue_summary_serum)
 
 # -> SERUM (PGMC subgroups)
-DE_PGMC_subgroups_SERUM = protein_data_CTR_PGMC_IDs %>%
+DE_PGMC_subgroups_SERUM = protein_data_PGMC_CTR_IDs %>%
   filter(SampleMatrixType == "SERUM") %>%
   group_by(type,Target,UniProtID) %>%
   filter(!is.na(NPQ)) %>%
@@ -162,7 +162,7 @@ DE_PGMC_subgroups_SERUM = DE_PGMC_subgroups_SERUM %>%
   mutate(log2FC_C9orf72_CTR = mean_NPQ_C9orf72 - mean_NPQ_CTR,
          log2FC_SOD1_CTR = mean_NPQ_SOD1 - mean_NPQ_CTR,
          log2FC_C9orf72_SOD1 = mean_NPQ_C9orf72 - mean_NPQ_SOD1) %>%
-  left_join(protein_pvalue_CTR_PGMC_summary_serum)
+  left_join(protein_pvalue_PGMC_CTR_summary_serum)
 
 # subgroups
 # ALS vs CTR (plasma)
@@ -175,8 +175,8 @@ DE_subgroups_plasma_ALS_CTR <- DE_subgroups_plasma %>%
                             "ns")))
 
 volcano_ALS_CTR_plasma <- volcano_plot_ALS_CTR(DE_subgroups_plasma_ALS_CTR,"log2FC_ALS_CTR",
-                                       title = "Differential expression analysis ALS vs CTR in plasma")
-pdf("plots/volcano_ALS_CTR_plasma.pdf")
+                                       title = "ALS vs CTR in plasma",4.7,0.5)
+pdf("plots/volcano_ALS_CTR_plasma.pdf",width = 8, height = 6)
 volcano_ALS_CTR_plasma
 dev.off()
 
@@ -190,9 +190,9 @@ DE_subgroups_CSF_ALS_CTR <- DE_subgroups_CSF %>%
                             "ns")))
 
 volcano_ALS_CTR_CSF <- volcano_plot_ALS_CTR(DE_subgroups_CSF_ALS_CTR,"log2FC_ALS_CTR",
-                                               title = "Differential expression analysis ALS vs CTR in CSF")
+                                               title = "ALS vs CTR in CSF",4,0.1)
 
-pdf("plots/volcano_ALS_CTR_CSF.pdf")
+pdf("plots/volcano_ALS_CTR_CSF.pdf",width = 8, height = 6)
 volcano_ALS_CTR_CSF
 dev.off()
 
@@ -206,29 +206,41 @@ DE_subgroups_SERUM_ALS_CTR <- DE_subgroups_SERUM %>%
                             "ns")))
 
 volcano_ALS_CTR_SERUM <- volcano_plot_ALS_CTR(DE_subgroups_SERUM_ALS_CTR,"log2FC_ALS_CTR",
-                                            title = "Differential expression analysis ALS vs CTR in SERUM")
+                                            title = "ALS vs CTR in SERUM",4.2,0.5)
 
-pdf("plots/volcano_ALS_CTR_serum.pdf")
+pdf("plots/volcano_ALS_CTR_serum.pdf",width = 8, height = 6)
 volcano_ALS_CTR_SERUM
 dev.off()
 
-volcano_plot_ALS_CTR <- function(dataset,log2fc,title){
+volcano_plot_ALS_CTR <- function(dataset,log2fc,title,add_x,add_y){
   ggplot(dataset,aes_string(log2fc,"log10_padj")) + 
     geom_point(aes(color=DE, size = log10_padj)) +
     geom_text_repel(data = dataset %>% filter(DE!="ns"),
-                    aes(label = Target),max.overlaps = 40) + 
+                    aes(label = Target),max.overlaps = 40,
+                    box.padding = 0.4,
+                    size = 5) + 
     geom_hline(yintercept = -log10(0.05),linetype = "dashed",col = "darkgrey") +
     geom_vline(xintercept = 0,linetype = "dashed",col = "darkgrey") +
     scale_color_manual(values  = c('CTR' = "#C25F3D", 
                                    'ns' = 'lightgrey', 
                                    'ALS'= "#3da0c2")) +
-    #annotate(geom="text", x=0.75, y= (-log10(0.05)) + 0.15, label="FDR = 5%",size = 5) +
+    annotate(geom="text", x=add_x, y= (-log10(0.05)) + add_y, label="FDR = 5%",size = 5,
+             col = "darkgrey") +
     scale_size_continuous(range=c(2, 7)) +
     theme_minimal() + 
     ylab(expression("-log"[10]*"(adjusted p-value)")) +
     xlab(expression("log"[2]*"(fold-change)")) + 
     ggtitle(title) +
-    labs(size = expression("-log"[10]*"(adjusted p-value)"))
+    labs(size = expression("-log"[10]*"(adjusted p-value)")) +
+    theme(
+      axis.title.x = element_blank(),
+      text = element_text(size = 15),               # Base font size for everything
+      axis.title = element_text(size = 18),         # Axis titles
+      axis.text = element_text(size = 16),          # Axis tick labels
+      plot.title = element_text(size = 18, hjust = 0.5,face = "bold"),
+      legend.title = element_text(size = 16),
+      legend.text = element_text(size = 15)
+    )
 }
 
 # Mimic vs CTR
@@ -242,8 +254,8 @@ DE_subgroups_plasma_mimic_CTR <- DE_subgroups_plasma %>%
                             "ns")))
 
 volcano_mimic_CTR_plasma <- volcano_plot_mimic_CTR(DE_subgroups_plasma_mimic_CTR,"log2FC_mimic_CTR",
-                                               title = "Differential expression analysis mimic vs CTR in plasma")
-pdf("plots/volcano_mimic_CTR_plasma.pdf")
+                                               title = "mimic vs CTR in plasma",2,0.1)
+pdf("plots/volcano_mimic_CTR_plasma.pdf",width = 8, height = 6)
 volcano_mimic_CTR_plasma
 dev.off()
 
@@ -257,9 +269,9 @@ DE_subgroups_CSF_mimic_CTR <- DE_subgroups_CSF %>%
                             "ns")))
 
 volcano_mimic_CTR_CSF <- volcano_plot_mimic_CTR(DE_subgroups_CSF_mimic_CTR,"log2FC_mimic_CTR",
-                                            title = "Differential expression analysis mimic vs CTR in CSF")
+                                            title = "mimic vs CTR in CSF",6,0.07)
 
-pdf("plots/volcano_mimic_CTR_CSF.pdf")
+pdf("plots/volcano_mimic_CTR_CSF.pdf",width = 8, height = 6)
 volcano_mimic_CTR_CSF
 dev.off()
 
@@ -273,96 +285,120 @@ DE_subgroups_SERUM_mimic_CTR <- DE_subgroups_SERUM %>%
                             "ns")))
 
 volcano_mimic_CTR_SERUM <- volcano_plot_mimic_CTR(DE_subgroups_SERUM_mimic_CTR,"log2FC_mimic_CTR",
-                                              title = "Differential expression analysis mimic vs CTR in SERUM")
+                                              title = "mimic vs CTR in SERUM",2.1,0.1)
 
-pdf("plots/volcano_mimic_CTR_serum.pdf")
+pdf("plots/volcano_mimic_CTR_serum.pdf",width = 8, height = 6)
 volcano_mimic_CTR_SERUM
 dev.off()
 
-volcano_plot_mimic_CTR <- function(dataset,log2fc,title){
+volcano_plot_mimic_CTR <- function(dataset,log2fc,title,add_x,add_y){
   ggplot(dataset,aes_string(log2fc,"log10_padj")) + 
     geom_point(aes(color=DE, size = log10_padj)) +
     geom_text_repel(data = dataset %>% filter(DE!="ns"),
-                    aes(label = Target),max.overlaps = 40) + 
+                    aes(label = Target),max.overlaps = 40,
+                    box.padding = 0.4,
+                    size = 5) + 
     geom_hline(yintercept = -log10(0.05),linetype = "dashed",col = "darkgrey") +
     geom_vline(xintercept = 0,linetype = "dashed",col = "darkgrey") +
     scale_color_manual(values  = c('CTR' = "#C25F3D", 
                                    'ns' = 'lightgrey', 
                                    'mimic'= "#3da0c2")) +
-    #annotate(geom="text", x=0.75, y= (-log10(0.05)) + 0.15, label="FDR = 5%",size = 5) +
+    annotate(geom="text", x=add_x, y= (-log10(0.05)) + add_y, label="FDR = 5%",size = 5,
+             col = "darkgrey") +
     scale_size_continuous(range=c(2, 7)) +
     theme_minimal() + 
     ylab(expression("-log"[10]*"(adjusted p-value)")) +
     xlab(expression("log"[2]*"(fold-change)")) + 
     ggtitle(title) +
-    labs(size = expression("-log"[10]*"(adjusted p-value)"))
+    labs(size = expression("-log"[10]*"(adjusted p-value)"))+
+    theme(
+      axis.title.x = element_blank(),
+      text = element_text(size = 15),               # Base font size for everything
+      axis.title = element_text(size = 18),         # Axis titles
+      axis.text = element_text(size = 16),          # Axis tick labels
+      plot.title = element_text(size = 18, hjust = 0.5,face = "bold"),
+      legend.title = element_text(size = 16),
+      legend.text = element_text(size = 15)
+    )
 }
 
-# CTR vs PGMC
+# PGMC vs CTR
 # -> plasma
-DE_subgroups_plasma_CTR_PGMC <- DE_subgroups_plasma %>%
-  select(Target,UniProtID,log2FC_CTR_PGMC,pvalue_CTR_PGMC,padj_CTR_PGMC) %>%
-  mutate(log10_pval = -log10(pvalue_CTR_PGMC),
-         log10_padj = -log10(padj_CTR_PGMC),
-         DE = ifelse(padj_CTR_PGMC<0.05 & log2FC_CTR_PGMC > 0,"CTR",
-                     ifelse(padj_CTR_PGMC<0.05 & log2FC_CTR_PGMC < 0,"PGMC",
+DE_subgroups_plasma_PGMC_CTR <- DE_subgroups_plasma %>%
+  select(Target,UniProtID,log2FC_PGMC_CTR,pvalue_PGMC_CTR,padj_PGMC_CTR) %>%
+  mutate(log10_pval = -log10(pvalue_PGMC_CTR),
+         log10_padj = -log10(padj_PGMC_CTR),
+         DE = ifelse(padj_PGMC_CTR<0.1 & log2FC_PGMC_CTR > 0,"PGMC",
+                     ifelse(padj_PGMC_CTR<0.1 & log2FC_PGMC_CTR < 0,"CTR",
                             "ns")))
 
-volcano_CTR_PGMC_plasma <- volcano_plot_CTR_PGMC(DE_subgroups_plasma_CTR_PGMC,"log2FC_CTR_PGMC",
-                                               title = "Differential expression analysis CTR vs PGMC in plasma")
-pdf("plots/volcano_CTR_PGMC_plasma.pdf")
-volcano_CTR_PGMC_plasma
+volcano_PGMC_CTR_plasma <- volcano_plot_PGMC_CTR(DE_subgroups_plasma_PGMC_CTR,"log2FC_PGMC_CTR",
+                                               title = "PGMC vs CTR in plasma",4,1)
+pdf("plots/volcano_PGMC_CTR_plasma.pdf",width = 8, height = 6)
+volcano_PGMC_CTR_plasma
 dev.off()
 
 # CTR vs PGMC(CSF)
-DE_subgroups_CSF_CTR_PGMC <- DE_subgroups_CSF %>%
-  select(Target,UniProtID,log2FC_CTR_PGMC,pvalue_CTR_PGMC,padj_CTR_PGMC) %>%
-  mutate(log10_pval = -log10(pvalue_CTR_PGMC),
-         log10_padj = -log10(padj_CTR_PGMC),
-         DE = ifelse(padj_CTR_PGMC<0.05 & log2FC_CTR_PGMC > 0,"CTR",
-                     ifelse(padj_CTR_PGMC<0.05 & log2FC_CTR_PGMC < 0,"PGMC",
+DE_subgroups_CSF_PGMC_CTR <- DE_subgroups_CSF %>%
+  select(Target,UniProtID,log2FC_PGMC_CTR,pvalue_PGMC_CTR,padj_PGMC_CTR) %>%
+  mutate(log10_pval = -log10(pvalue_PGMC_CTR),
+         log10_padj = -log10(padj_PGMC_CTR),
+         DE = ifelse(padj_PGMC_CTR<0.1 & log2FC_PGMC_CTR > 0,"CTR",
+                     ifelse(padj_PGMC_CTR<0.1 & log2FC_PGMC_CTR < 0,"PGMC",
                             "ns")))
 
-volcano_CTR_PGMC_CSF <- volcano_plot_CTR_PGMC(DE_subgroups_CSF_CTR_PGMC,"log2FC_CTR_PGMC",
-                                            title = "Differential expression analysis CTR vs PGMC in CSF")
+volcano_PGMC_CTR_CSF <- volcano_plot_PGMC_CTR(DE_subgroups_CSF_PGMC_CTR,"log2FC_PGMC_CTR",
+                                            title = "PGMC vs CTR in CSF",4,1)
 
-pdf("plots/volcano_CTR_PGMC_CSF.pdf")
-volcano_CTR_PGMC_CSF
+pdf("plots/volcano_PGMC_CTR_CSF.pdf",width = 8, height = 6)
+volcano_PGMC_CTR_CSF
 dev.off()
 
 # CTR vs PGMC (SERUM)
-DE_subgroups_SERUM_CTR_PGMC <- DE_subgroups_SERUM %>%
-  select(Target,UniProtID,log2FC_CTR_PGMC,pvalue_CTR_PGMC,padj_CTR_PGMC) %>%
-  mutate(log10_pval = -log10(pvalue_CTR_PGMC),
-         log10_padj = -log10(padj_CTR_PGMC),
-         DE = ifelse(padj_CTR_PGMC<0.05 & log2FC_CTR_PGMC > 0,"CTR",
-                     ifelse(padj_CTR_PGMC<0.05 & log2FC_CTR_PGMC < 0,"PGMC",
+DE_subgroups_SERUM_PGMC_CTR <- DE_subgroups_SERUM %>%
+  select(Target,UniProtID,log2FC_PGMC_CTR,pvalue_PGMC_CTR,padj_PGMC_CTR) %>%
+  mutate(log10_pval = -log10(pvalue_PGMC_CTR),
+         log10_padj = -log10(padj_PGMC_CTR),
+         DE = ifelse(padj_PGMC_CTR<0.1 & log2FC_PGMC_CTR > 0,"CTR",
+                     ifelse(padj_PGMC_CTR<0.1 & log2FC_PGMC_CTR < 0,"PGMC",
                             "ns")))
 
-volcano_CTR_PGMC_SERUM <- volcano_plot_CTR_PGMC(DE_subgroups_SERUM_CTR_PGMC,"log2FC_CTR_PGMC",
-                                              title = "Differential expression analysis CTR vs PGMC in SERUM")
+volcano_PGMC_CTR_SERUM <- volcano_plot_PGMC_CTR(DE_subgroups_SERUM_PGMC_CTR,"log2FC_PGMC_CTR",
+                                              title = "PGMC vs CTR in SERUM",4,1)
 
-pdf("plots/volcano_CTR_PGMC_serum.pdf")
-volcano_CTR_PGMC_SERUM
+pdf("plots/volcano_PGMC_CTR_serum.pdf",width = 8, height = 6)
+volcano_PGMC_CTR_SERUM
 dev.off()
 
-volcano_plot_CTR_PGMC <- function(dataset,log2fc,title){
+volcano_plot_PGMC_CTR <- function(dataset,log2fc,title,add_x,add_y){
   ggplot(dataset,aes_string(log2fc,"log10_padj")) + 
     geom_point(aes(color=DE, size = log10_padj)) +
     geom_text_repel(data = dataset %>% filter(DE!="ns"),
-                    aes(label = Target),max.overlaps = 40) + 
-    geom_hline(yintercept = -log10(0.05),linetype = "dashed",col = "darkgrey") +
+                    aes(label = Target),max.overlaps = 40,
+                    box.padding = 0.4,
+                    size = 5) + 
+    geom_hline(yintercept = -log10(0.1),linetype = "dashed",col = "darkgrey") +
     geom_vline(xintercept = 0,linetype = "dashed",col = "darkgrey") +
-    scale_color_manual(values  = c('PGMC' = "#C25F3D", 
+    scale_color_manual(values  = c('CTR' = "#C25F3D", 
                                    'ns' = 'lightgrey', 
-                                   'CTR'= "#3da0c2")) +
-    #annotate(geom="text", x=0.75, y= (-log10(0.05)) + 0.15, label="FDR = 5%",size = 5) +
+                                   'PGMC'= "#3da0c2")) +
+    annotate(geom="text", x=add_x, y= (-log10(0.1)) + add_y, label="FDR = 10%",size = 5,
+             col = "dargrey") +
     scale_size_continuous(range=c(2, 7)) +
     theme_minimal() + 
     ylab(expression("-log"[10]*"(adjusted p-value)")) +
     xlab(expression("log"[2]*"(fold-change)")) + 
     ggtitle(title) +
-    labs(size = expression("-log"[10]*"(adjusted p-value)"))
+    labs(size = expression("-log"[10]*"(adjusted p-value)")) +
+    theme(
+      axis.title.x = element_blank(),
+      text = element_text(size = 16),               # Base font size for everything
+      axis.title = element_text(size = 18),         # Axis titles
+      axis.text = element_text(size = 16),          # Axis tick labels
+      plot.title = element_text(size = 18, hjust = 0.5),
+      legend.title = element_text(size = 16),
+      legend.text = element_text(size = 15)
+    )
 }
 
 # ALS vs PGMC (plasma)
@@ -375,8 +411,8 @@ DE_subgroups_plasma_ALS_PGMC <- DE_subgroups_plasma %>%
                             "ns")))
 
 volcano_ALS_PGMC_plasma <- volcano_plot_ALS_PGMC(DE_subgroups_plasma_ALS_PGMC,"log2FC_ALS_PGMC",
-                                               title = "Differential expression analysis ALS vs PGMC in plasma")
-pdf("plots/volcano_ALS_PGMC_plasma.pdf")
+                                               title = "ALS vs PGMC in plasma",3.5,0.5)
+pdf("plots/volcano_ALS_PGMC_plasma.pdf",width = 8, height = 6)
 volcano_ALS_PGMC_plasma
 dev.off()
 
@@ -390,9 +426,9 @@ DE_subgroups_CSF_ALS_PGMC <- DE_subgroups_CSF %>%
                             "ns")))
 
 volcano_ALS_PGMC_CSF <- volcano_plot_ALS_PGMC(DE_subgroups_CSF_ALS_PGMC,"log2FC_ALS_PGMC",
-                                            title = "Differential expression analysis ALS vs PGMC in CSF")
+                                            title = "ALS vs PGMC in CSF",4.3,0.1)
 
-pdf("plots/volcano_ALS_PGMC_CSF.pdf")
+pdf("plots/volcano_ALS_PGMC_CSF.pdf",width = 8, height = 6)
 volcano_ALS_PGMC_CSF
 dev.off()
 
@@ -406,29 +442,41 @@ DE_subgroups_SERUM_ALS_PGMC <- DE_subgroups_SERUM %>%
                             "ns")))
 
 volcano_ALS_PGMC_SERUM <- volcano_plot_ALS_PGMC(DE_subgroups_SERUM_ALS_PGMC,"log2FC_ALS_PGMC",
-                                              title = "Differential expression analysis ALS vs PGMC in SERUM")
+                                              title = "ALS vs PGMC in SERUM",3,0.5)
 
-pdf("plots/volcano_ALS_PGMC_serum.pdf")
+Cairo::CairoPDF("plots/volcano_ALS_PGMC_serum.pdf",width = 8, height = 6,family = "Arial Unicode MS")
 volcano_ALS_PGMC_SERUM
 dev.off()
 
-volcano_plot_ALS_PGMC <- function(dataset,log2fc,title){
+volcano_plot_ALS_PGMC <- function(dataset,log2fc,title,add_x,add_y){
   ggplot(dataset,aes_string(log2fc,"log10_padj")) + 
     geom_point(aes(color=DE, size = log10_padj)) +
     geom_text_repel(data = dataset %>% filter(DE!="ns"),
-                    aes(label = Target),max.overlaps = 40) + 
+                    aes(label = Target),max.overlaps = 40,
+                    box.padding = 0.4) + 
     geom_hline(yintercept = -log10(0.05),linetype = "dashed",col = "darkgrey") +
     geom_vline(xintercept = 0,linetype = "dashed",col = "darkgrey") +
     scale_color_manual(values  = c('PGMC' = "#C25F3D", 
                                    'ns' = 'lightgrey', 
                                    'ALS'= "#3da0c2")) +
     scale_size_continuous(range=c(2, 7)) +
-    #annotate(geom="text", x=0.75, y= (-log10(0.05)) + 0.15, label="FDR = 5%",size = 5) +
+    annotate(geom="text", x=add_x, y= (-log10(0.05)) + add_y, label="FDR = 5%",size = 5,
+             col = "darkgrey") +
     theme_minimal() + 
     ylab(expression("-log"[10]*"(adjusted p-value)")) +
     xlab(expression("log"[2]*"(fold-change)")) + 
     ggtitle(title) +
-    labs(size = expression("-log"[10]*"(adjusted p-value)"))
+    labs(size = expression("-log"[10]*"(adjusted p-value)")) +
+    theme(
+      axis.title.x = element_blank(),
+      text = element_text(size = 15),               # Base font size for everything
+      axis.title = element_text(size = 18),         # Axis titles
+      axis.text = element_text(size = 16),          # Axis tick labels
+      plot.title = element_text(size = 18, hjust = 0.5,face = "bold"),
+      legend.title = element_text(size = 16),
+      legend.text = element_text(size = 15)
+    )
+  
 }
 
 ## C9orf72 vs SOD1
@@ -441,10 +489,11 @@ DE_subgroups_PLASMA_C9orf72_SOD1 <- DE_PGMC_subgroups_plasma %>%
                      ifelse(padj_C9orf72_SOD1<0.05 & log2FC_C9orf72_SOD1 < 0,"SOD1",
                             "ns")))
 
-volcano_C9orf72_SOD1_PLASMA <- volcano_plot_C9orf72_SOD1(DE_subgroups_PLASMA_C9orf72_SOD1,"log2FC_C9orf72_SOD1",
-                                                        title = "Differential expression analysis C9orf72 vs SOD1 in PLASMA")
+volcano_C9orf72_SOD1_PLASMA <- volcano_plot_C9orf72_SOD1(DE_subgroups_PLASMA_C9orf72_SOD1,
+                                                         "log2FC_C9orf72_SOD1",
+                                                        title = "C9orf72 vs SOD1 in PLASMA",4,0.1)
 
-pdf("plots/volcano_C9orf72_SOD1_PLASMA.pdf")
+pdf("plots/volcano_C9orf72_SOD1_PLASMA.pdf",width = 8, height = 6)
 volcano_C9orf72_SOD1_PLASMA
 dev.off()
 
@@ -458,9 +507,9 @@ DE_subgroups_CSF_C9orf72_SOD1 <- DE_PGMC_subgroups_CSF %>%
                             "ns")))
 
 volcano_C9orf72_SOD1_CSF <- volcano_plot_C9orf72_SOD1(DE_subgroups_CSF_C9orf72_SOD1,"log2FC_C9orf72_SOD1",
-                                                        title = "Differential expression analysis C9orf72 vs SOD1 in CSF")
+                                                        title = "C9orf72 vs SOD1 in CSF",4,0.1)
 
-pdf("plots/volcano_C9orf72_SOD1_CSF.pdf")
+pdf("plots/volcano_C9orf72_SOD1_CSF.pdf",width = 8, height = 6)
 volcano_C9orf72_SOD1_CSF
 dev.off()
 
@@ -474,29 +523,41 @@ DE_subgroups_SERUM_C9orf72_SOD1 <- DE_PGMC_subgroups_SERUM %>%
                             "ns")))
 
 volcano_C9orf72_SOD1_SERUM <- volcano_plot_C9orf72_SOD1(DE_subgroups_SERUM_C9orf72_SOD1,"log2FC_C9orf72_SOD1",
-                                                title = "Differential expression analysis C9orf72 vs SOD1 in SERUM")
+                                                title = "C9orf72 vs SOD1 in SERUM",3,0.1)
 
-pdf("plots/volcano_C9orf72_SOD1_serum.pdf")
+pdf("plots/volcano_C9orf72_SOD1_serum.pdf",width = 8, height = 6)
 volcano_C9orf72_SOD1_SERUM
 dev.off()
 
-volcano_plot_C9orf72_SOD1 <- function(dataset,log2fc,title){
+volcano_plot_C9orf72_SOD1 <- function(dataset,log2fc,title,add_x,add_y){
   ggplot(dataset,aes_string(log2fc,"log10_padj")) + 
     geom_point(aes(color=DE, size = log10_padj)) +
     geom_text_repel(data = dataset %>% filter(DE!="ns"),
-                    aes(label = Target),max.overlaps = 40) + 
+                    aes(label = Target),max.overlaps = 40,
+                    box.padding = 0.4,
+                    size = 5) + 
     geom_hline(yintercept = -log10(0.05),linetype = "dashed",col = "darkgrey") +
     geom_vline(xintercept = 0,linetype = "dashed",col = "darkgrey") +
     scale_color_manual(values  = c('SOD1' = "#C25F3D", 
                                    'ns' = 'lightgrey', 
                                    'C9orf72'= "#3da0c2")) +
     scale_size_continuous(range=c(2, 7)) +
-    #annotate(geom="text", x=0.75, y= (-log10(0.05)) + 0.15, label="FDR = 5%",size = 5) +
+    annotate(geom="text", x=add_x, y= (-log10(0.05)) + add_y, label="FDR = 5%",size = 5,
+             col = "darkgrey") +
     theme_minimal() + 
     ylab(expression("-log"[10]*"(adjusted p-value)")) +
     xlab(expression("log"[2]*"(fold-change)")) + 
     ggtitle(title) +
-    labs(size = expression("-log"[10]*"(adjusted p-value)"))
+    labs(size = expression("-log"[10]*"(adjusted p-value)"))  +
+    theme(
+      axis.title.x = element_blank(),
+      text = element_text(size = 15),               # Base font size for everything
+      axis.title = element_text(size = 18),         # Axis titles
+      axis.text = element_text(size = 16),          # Axis tick labels
+      plot.title = element_text(size = 18, hjust = 0.5,face = "bold"),
+      legend.title = element_text(size = 16),
+      legend.text = element_text(size = 15)
+    )
 }
 
 ## C9orf72 vs CTR
@@ -510,9 +571,9 @@ DE_subgroups_PLASMA_C9orf72_CTR <- DE_PGMC_subgroups_plasma %>%
                             "ns")))
 
 volcano_C9orf72_CTR_PLASMA <- volcano_plot_C9orf72_CTR(DE_subgroups_PLASMA_C9orf72_CTR,"log2FC_C9orf72_CTR",
-                                                         title = "Differential expression analysis C9orf72 vs CTR in PLASMA")
+                                                         title = "C9orf72 vs CTR in PLASMA",3,0.1)
 
-pdf("plots/volcano_C9orf72_CTR_PLASMA.pdf")
+pdf("plots/volcano_C9orf72_CTR_PLASMA.pdf",width = 8, height = 6)
 volcano_C9orf72_CTR_PLASMA
 dev.off()
 
@@ -526,9 +587,9 @@ DE_subgroups_CSF_C9orf72_CTR <- DE_PGMC_subgroups_CSF %>%
                             "ns")))
 
 volcano_C9orf72_CTR_CSF <- volcano_plot_C9orf72_CTR(DE_subgroups_CSF_C9orf72_CTR,"log2FC_C9orf72_CTR",
-                                                      title = "Differential expression analysis C9orf72 vs CTR in CSF")
+                                                      title = "C9orf72 vs CTR in CSF",3,0.1)
 
-pdf("plots/volcano_C9orf72_CTR_CSF.pdf")
+pdf("plots/volcano_C9orf72_CTR_CSF.pdf",width = 8, height = 6)
 volcano_C9orf72_CTR_CSF
 dev.off()
 
@@ -542,29 +603,41 @@ DE_subgroups_SERUM_C9orf72_CTR <- DE_PGMC_subgroups_SERUM %>%
                             "ns")))
 
 volcano_C9orf72_CTR_SERUM <- volcano_plot_C9orf72_CTR(DE_subgroups_SERUM_C9orf72_CTR,"log2FC_C9orf72_CTR",
-                                                        title = "Differential expression analysis C9orf72 vs CTR in SERUM")
+                                                        title = "C9orf72 vs CTR in SERUM",3,0.1)
 
-pdf("plots/volcano_C9orf72_CTR_serum.pdf")
+pdf("plots/volcano_C9orf72_CTR_serum.pdf",width = 8, height = 6)
 volcano_C9orf72_CTR_SERUM
 dev.off()
 
-volcano_plot_C9orf72_CTR <- function(dataset,log2fc,title){
+volcano_plot_C9orf72_CTR <- function(dataset,log2fc,title,add_x,add_y){
   ggplot(dataset,aes_string(log2fc,"log10_padj")) + 
     geom_point(aes(color=DE, size = log10_padj)) +
     geom_text_repel(data = dataset %>% filter(DE!="ns"),
-                    aes(label = Target),max.overlaps = 40) + 
+                    aes(label = Target),max.overlaps = 40,
+                    box.padding = 0.4,
+                    size = 5) + 
     geom_hline(yintercept = -log10(0.05),linetype = "dashed",col = "darkgrey") +
     geom_vline(xintercept = 0,linetype = "dashed",col = "darkgrey") +
     scale_color_manual(values  = c('CTR' = "#C25F3D", 
                                    'ns' = 'lightgrey', 
                                    'C9orf72'= "#3da0c2")) +
     scale_size_continuous(range=c(2, 7)) +
-    #annotate(geom="text", x=0.75, y= (-log10(0.05)) + 0.15, label="FDR = 5%",size = 5) +
+    annotate(geom="text", x=add_x, y= (-log10(0.05)) + add_y, label="FDR = 5%",size = 5,
+             col = "darkgrey") +
     theme_minimal() + 
     ylab(expression("-log"[10]*"(adjusted p-value)")) +
     xlab(expression("log"[2]*"(fold-change)")) + 
     ggtitle(title) +
-    labs(size = expression("-log"[10]*"(adjusted p-value)"))
+    labs(size = expression("-log"[10]*"(adjusted p-value)")) +
+    theme(
+      axis.title.x = element_blank(),
+      text = element_text(size = 15),               # Base font size for everything
+      axis.title = element_text(size = 18),         # Axis titles
+      axis.text = element_text(size = 16),          # Axis tick labels
+      plot.title = element_text(size = 18, hjust = 0.5,face = "bold"),
+      legend.title = element_text(size = 16),
+      legend.text = element_text(size = 15)
+    )
 }
 
 ## SOD1 vs CTR
@@ -578,9 +651,9 @@ DE_subgroups_PLASMA_SOD1_CTR <- DE_PGMC_subgroups_plasma %>%
                             "ns")))
 
 volcano_SOD1_CTR_PLASMA <- volcano_plot_SOD1_CTR(DE_subgroups_PLASMA_SOD1_CTR,"log2FC_SOD1_CTR",
-                                                       title = "Differential expression analysis SOD1 vs CTR in PLASMA")
+                                                       title = "SOD1 vs CTR in PLASMA",3,0.1)
 
-pdf("plots/volcano_SOD1_CTR_PLASMA.pdf")
+pdf("plots/volcano_SOD1_CTR_PLASMA.pdf",width = 8, height = 6)
 volcano_SOD1_CTR_PLASMA
 dev.off()
 
@@ -594,9 +667,9 @@ DE_subgroups_CSF_SOD1_CTR <- DE_PGMC_subgroups_CSF %>%
                             "ns")))
 
 volcano_SOD1_CTR_CSF <- volcano_plot_SOD1_CTR(DE_subgroups_CSF_SOD1_CTR,"log2FC_SOD1_CTR",
-                                                    title = "Differential expression analysis SOD1 vs CTR in CSF")
+                                                    title = "SOD1 vs CTR in CSF",3,0.1)
 
-pdf("plots/volcano_SOD1_CTR_CSF.pdf")
+pdf("plots/volcano_SOD1_CTR_CSF.pdf",width = 8, height = 6)
 volcano_SOD1_CTR_CSF
 dev.off()
 
@@ -610,29 +683,41 @@ DE_subgroups_SERUM_SOD1_CTR <- DE_PGMC_subgroups_SERUM %>%
                             "ns")))
 
 volcano_SOD1_CTR_SERUM <- volcano_plot_SOD1_CTR(DE_subgroups_SERUM_SOD1_CTR,"log2FC_SOD1_CTR",
-                                                      title = "Differential expression analysis SOD1 vs CTR in SERUM")
+                                                      title = "SOD1 vs CTR in SERUM",3,0.1)
 
-pdf("plots/volcano_SOD1_CTR_serum.pdf")
+pdf("plots/volcano_SOD1_CTR_serum.pdf",width = 8, height = 6)
 volcano_SOD1_CTR_SERUM
 dev.off()
 
-volcano_plot_SOD1_CTR <- function(dataset,log2fc,title){
+volcano_plot_SOD1_CTR <- function(dataset,log2fc,title,add_x,add_y){
   ggplot(dataset,aes_string(log2fc,"log10_padj")) + 
     geom_point(aes(color=DE, size = log10_padj)) +
     geom_text_repel(data = dataset %>% filter(DE!="ns"),
-                    aes(label = Target),max.overlaps = 40) + 
+                    aes(label = Target),max.overlaps = 40,
+                    box.padding = 0.4,
+                    size = 5) + 
     geom_hline(yintercept = -log10(0.05),linetype = "dashed",col = "darkgrey") +
     geom_vline(xintercept = 0,linetype = "dashed",col = "darkgrey") +
     scale_color_manual(values  = c('CTR' = "#C25F3D", 
                                    'ns' = 'lightgrey', 
                                    'SOD1'= "#3da0c2")) +
     scale_size_continuous(range=c(2, 7)) +
-    #annotate(geom="text", x=0.75, y= (-log10(0.05)) + 0.15, label="FDR = 5%",size = 5) +
+    annotate(geom="text", x=add_x, y= (-log10(0.05)) + add_y, label="FDR = 5%",size = 5,
+             col = "darkgrey") +
     theme_minimal() + 
     ylab(expression("-log"[10]*"(adjusted p-value)")) +
     xlab(expression("log"[2]*"(fold-change)")) + 
     ggtitle(title) +
-    labs(size = expression("-log"[10]*"(adjusted p-value)"))
+    labs(size = expression("-log"[10]*"(adjusted p-value)")) +
+    theme(
+      axis.title.x = element_blank(),
+      text = element_text(size = 15),               # Base font size for everything
+      axis.title = element_text(size = 18),         # Axis titles
+      axis.text = element_text(size = 16),          # Axis tick labels
+      plot.title = element_text(size = 18, hjust = 0.5,face = "bold"),
+      legend.title = element_text(size = 16),
+      legend.text = element_text(size = 15)
+    )
 }
 
 ## signed p-values 
@@ -643,7 +728,7 @@ colors = c('ALS' = '#32A55E',
   'ns' = '#B4BFC5',
   'CTR' = '#CF7041',
   "CTR and PGMC" = "#E5C5BD")
-signed_pvalue_ALS_CTR_PGMC <- function(data_to_plot,title_plot){
+signed_pvalue_ALS_PGMC_CTR <- function(data_to_plot,title_plot){
   ggplot(data_to_plot,aes(signed_ALS_CTR,signed_ALS_PGMC)) +
     geom_point(aes(colour = DE_new),size = 2.25, color = "grey", alpha = 0.5) +
     geom_point(aes(colour = DE_new),size = 2.25, alpha = 0.5) +
@@ -651,7 +736,14 @@ signed_pvalue_ALS_CTR_PGMC <- function(data_to_plot,title_plot){
           plot.background = element_blank(), 
           axis.line = element_line()) +
     ggtitle(title_plot)+
-    theme(plot.title = element_text(size = 15, face = "bold"))+
+    theme(plot.title = element_text(size = 15, face = "bold"),
+          axis.title.x = element_blank(),
+          text = element_text(size = 15),               # Base font size for everything
+          axis.title = element_text(size = 18),         # Axis titles
+          axis.text = element_text(size = 16),          # Axis tick labels
+          plot.title = element_text(size = 18, hjust = 0.5,face = "bold"),
+          legend.title = element_text(size = 16),
+          legend.text = element_text(size = 15))+
     scale_x_continuous(breaks = seq(-50, 20, by = 5))+
     scale_y_continuous(breaks = seq(-30, 140, by = 10))+
     xlab(paste0("ALS vs CTR (sign(LFC) x -log10(p-adj))"))+
@@ -664,15 +756,15 @@ signed_pvalue_ALS_CTR_PGMC <- function(data_to_plot,title_plot){
     geom_hline(yintercept = -log10(0.05), linetype="dashed",color = "grey",alpha = 0.6)+
     #geom_abline(linetype="dashed",color = "grey",alpha = 0.6) +
     annotate(geom = "text", label = "FDR = 5%",x= -log10(0.05)+0.9,y= log10(0.05)-0.15,
-             color = "grey") +
+             color = "grey",size = 5) +
     annotate(geom = "text", label = "FDR = 5%",x=log10(0.05)-0.9,y= - log10(0.05)+0.15,
-             color = "grey") +
+             color = "grey",size = 5) +
     geom_text_repel(data = subset(data_to_plot, DE_new != "ns"), 
                      aes(label=Target), size=4,  color="black",
                      nudge_y = 0.5,
                      nudge_x = 0.5, fontface="bold",  
                      min.segment.length = unit(0.1, "lines"), 
-                     max.overlaps = 40) +
+                     max.overlaps = 40, size = 5) +
     scale_colour_manual(values = colors) }
 # -> Plasma
 signed_subgroups_ALS_CTR_and_ALS_PGMC = merge(DE_subgroups_plasma_ALS_CTR %>%
@@ -692,7 +784,7 @@ signed_subgroups_ALS_CTR_and_ALS_PGMC = merge(DE_subgroups_plasma_ALS_CTR %>%
                                               ifelse(DE_ALS_PGMC == "PGMC","PGMC","ns")))))))
 
 pdf("plots/signed_ALSvsCTR_ALSvsPGMC_plasma.pdf")
-signed_pvalue_ALS_CTR_PGMC(signed_subgroups_ALS_CTR_and_ALS_PGMC,"ALS vs CTR + ALS vs PGMC (PLASMA)")
+signed_pvalue_ALS_PGMC_CTR(signed_subgroups_ALS_CTR_and_ALS_PGMC,"ALS vs CTR + ALS vs PGMC (PLASMA)")
 dev.off()
 
 # -> CSF
@@ -713,7 +805,7 @@ signed_subgroups_ALS_CTR_and_ALS_PGMC = merge(DE_subgroups_CSF_ALS_CTR %>%
                                                      ifelse(DE_ALS_PGMC == "PGMC","PGMC","ns")))))))
 
 pdf("plots/signed_ALSvsCTR_ALSvsPGMC_CSF.pdf")
-signed_pvalue_ALS_CTR_PGMC(signed_subgroups_ALS_CTR_and_ALS_PGMC,"ALS vs CTR + ALS vs PGMC (CSF)")
+signed_pvalue_ALS_PGMC_CTR(signed_subgroups_ALS_CTR_and_ALS_PGMC,"ALS vs CTR + ALS vs PGMC (CSF)")
 dev.off()
 
 # -> Serum
@@ -734,7 +826,7 @@ signed_subgroups_ALS_CTR_and_ALS_PGMC = merge(DE_subgroups_SERUM_ALS_CTR %>%
                                                      ifelse(DE_ALS_PGMC == "PGMC","PGMC","ns")))))))
 
 pdf("plots/signed_ALSvsCTR_ALSvsPGMC_SERUM.pdf")
-signed_pvalue_ALS_CTR_PGMC(signed_subgroups_ALS_CTR_and_ALS_PGMC,"ALS vs CTR + ALS vs PGMC (SERUM)")
+signed_pvalue_ALS_PGMC_CTR(signed_subgroups_ALS_CTR_and_ALS_PGMC,"ALS vs CTR + ALS vs PGMC (SERUM)")
 dev.off()
 
 # ALS vs CTR + Mimic vs CTR 
@@ -758,22 +850,29 @@ signed_pvalue_ALS_CTR_mimic <- function(data_to_plot,title_plot){
     xlab(paste0("ALS vs CTR (sign(LFC) x -log10(p-adj))"))+
     theme(axis.title = element_text(size = 15), axis.text=element_text(size=10))+
     ylab(paste0("mimic vs CTR (sign(LFC) x -log10(p-adj))"))+
-    theme(axis.title = element_text(size = 15), axis.text=element_text(size=10))+
+    theme(axis.title = element_text(size = 15), axis.text=element_text(size=10),
+          axis.title.x = element_blank(),
+          text = element_text(size = 15),               # Base font size for everything
+          axis.title = element_text(size = 18),         # Axis titles
+          axis.text = element_text(size = 16),          # Axis tick labels
+          plot.title = element_text(size = 18, hjust = 0.5,face = "bold"),
+          legend.title = element_text(size = 16),
+          legend.text = element_text(size = 15))+
     geom_vline(xintercept = log10(0.05), linetype="dashed",color = "grey",alpha = 0.6)+
     geom_vline(xintercept = -log10(0.05), linetype="dashed",color = "grey",alpha = 0.6)+
     geom_hline(yintercept = log10(0.05), linetype="dashed",color = "grey",alpha = 0.6)+
     geom_hline(yintercept = -log10(0.05), linetype="dashed",color = "grey",alpha = 0.6)+
     #geom_abline(linetype="dashed",color = "grey",alpha = 0.6) +
     annotate(geom = "text", label = "FDR = 5%",x= -log10(0.05)+0.9,y= log10(0.05)-0.15,
-             color = "grey") +
+             color = "grey", size = 5) +
     annotate(geom = "text", label = "FDR = 5%",x=log10(0.05)-0.9,y= - log10(0.05)+0.15,
-             color = "grey") +
+             color = "grey", size = 5) +
     geom_text_repel(data = subset(data_to_plot, DE_new != "ns"), 
                     aes(label=Target), size=4,  color="black",
                     nudge_y = 0.5,
                     nudge_x = 0.5, fontface="bold",  
                     min.segment.length = unit(0.1, "lines"), 
-                    max.overlaps = 40) +
+                    max.overlaps = 40, size = 5) +
     scale_colour_manual(values = colors) }
 # -> Plasma
 signed_subgroups_ALS_CTR_and_mimic_CTR = merge(DE_subgroups_plasma_ALS_CTR %>%
@@ -859,22 +958,29 @@ signed_pvalue_C9orf72_SOD1_CTR <- function(data_to_plot,title_plot){
     xlab(paste0("C9orf72 vs CTR (sign(LFC) x -log10(p-adj))"))+
     theme(axis.title = element_text(size = 15), axis.text=element_text(size=10))+
     ylab(paste0("SOD1 vs CTR (sign(LFC) x -log10(p-adj))"))+
-    theme(axis.title = element_text(size = 15), axis.text=element_text(size=10))+
+    theme(axis.title = element_text(size = 15), axis.text=element_text(size=10),
+          axis.title.x = element_blank(),
+          text = element_text(size = 15),               # Base font size for everything
+          axis.title = element_text(size = 18),         # Axis titles
+          axis.text = element_text(size = 16),          # Axis tick labels
+          plot.title = element_text(size = 18, hjust = 0.5,face = "bold"),
+          legend.title = element_text(size = 16),
+          legend.text = element_text(size = 15))+
     geom_vline(xintercept = log10(0.05), linetype="dashed",color = "grey",alpha = 0.6)+
     geom_vline(xintercept = -log10(0.05), linetype="dashed",color = "grey",alpha = 0.6)+
     geom_hline(yintercept = log10(0.05), linetype="dashed",color = "grey",alpha = 0.6)+
     geom_hline(yintercept = -log10(0.05), linetype="dashed",color = "grey",alpha = 0.6)+
     #geom_abline(linetype="dashed",color = "grey",alpha = 0.6) +
     annotate(geom = "text", label = "FDR = 5%",x= -log10(0.05)+0.9,y= log10(0.05)-0.15,
-             color = "grey") +
+             color = "grey", size = 5) +
     annotate(geom = "text", label = "FDR = 5%",x=log10(0.05)-0.9,y= - log10(0.05)+0.15,
-             color = "grey") +
+             color = "grey", size = 5) +
     geom_text_repel(data = subset(data_to_plot, DE_new != "ns"), 
                     aes(label=Target), size=4,  color="black",
                     nudge_y = 0.5,
                     nudge_x = 0.5, fontface="bold",  
                     min.segment.length = unit(0.1, "lines"), 
-                    max.overlaps = 40) +
+                    max.overlaps = 40, size = 5) +
     scale_colour_manual(values = colors) }
 # -> Plasma
 signed_subgroups_C9orf72_CTR_and_SOD1_CTR = merge(DE_subgroups_PLASMA_C9orf72_CTR %>%
