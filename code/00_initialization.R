@@ -116,4 +116,8 @@ Sex_age_all_participants = do.call("rbind",list(participants_PGMC,
                                                 participants_CTR,
                                                 participants_ALS_mimic))
 
+# Questionnaire info with ALSFRS scores
+Questionnaire <- read_delim("data input/export-2025-09-04-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_KSSGCH_MRI_NIUSASSK (ALSFRS-r)/QuestionnaireG.csv", 
+                             delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
 

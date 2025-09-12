@@ -174,7 +174,7 @@ p3
 dev.off()
 
 # -> Correlation plots all together
-combined <- plot_grid(p1, p2, p3, nrow = 1, align = "hv")
+combined <- plot_grid(p2, p1, p3, nrow = 1, align = "h")
 
 pdf("plots/correlation_combined.pdf", width = 18, height = 6)
 print(combined)
