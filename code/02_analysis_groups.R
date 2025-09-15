@@ -89,7 +89,7 @@ plot_plasma <- ggboxplot(
 # Add statistical test p-values
 protein_pvalue_plasma <- protein_pvalue_plasma %>%
   filter(Target %in% top10_plasma) %>% add_xy_position(x = "type")
-plot_plasma = plot_plasma + stat_pvalue_manual(protein_pvalue_plasma, label = "p.adj.signif") +
+plot_plasma = plot_plasma + stat_pvalue_manual(protein_pvalue_plasma, label = "p") +
   scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                  'ALS' = '#B2936F',
                                  'PGMC' = '#ad5291',
@@ -128,7 +128,7 @@ plot_plasma <- ggboxplot(
 # Add statistical test p-values
 protein_pvalue_plasma <- protein_pvalue_plasma %>%
   filter(Target %in% proteins_interest_plasma) %>% add_xy_position(x = "type")
-plot_plasma = plot_plasma + stat_pvalue_manual(protein_pvalue_plasma, label = "p.adj.signif") +
+plot_plasma = plot_plasma + stat_pvalue_manual(protein_pvalue_plasma, label = "p") +
   scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                 'ALS' = '#B2936F',
                                 'PGMC' = '#ad5291',
@@ -158,7 +158,7 @@ for (i in 1:length(proteins_plasma)) {
     x = "type", y = "NPQ",
     fill = "type", palette = "npg", legend = "none",
     ggtheme = theme_pubr(border = TRUE)) +
-    stat_pvalue_manual(protein_pvalue_plasma_i, label = "p.adj.signif",size = 6) +
+    stat_pvalue_manual(protein_pvalue_plasma_i, label = "p",size = 6) +
     scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                   'ALS' = '#B2936F',
                                   'PGMC' = '#ad5291',
@@ -208,7 +208,7 @@ plot_CSF <- ggboxplot(
 # Add statistical test p-values
 protein_pvalue_CSF <- protein_pvalue_CSF %>%
   filter(Target %in% top10_CSF) %>% add_xy_position(x = "type")
-plot_CSF = plot_CSF + stat_pvalue_manual(protein_pvalue_CSF, label = "p.adj.signif") +
+plot_CSF = plot_CSF + stat_pvalue_manual(protein_pvalue_CSF, label = "p") +
   scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                 'ALS' = '#B2936F',
                                 'PGMC' = '#ad5291',
@@ -247,7 +247,7 @@ plot_CSF <- ggboxplot(
 # Add statistical test p-values
 protein_pvalue_CSF <- protein_pvalue_CSF %>%
   filter(Target %in% proteins_interest_CSF) %>% add_xy_position(x = "type")
-plot_CSF = plot_CSF + stat_pvalue_manual(protein_pvalue_CSF, label = "p.adj.signif") +
+plot_CSF = plot_CSF + stat_pvalue_manual(protein_pvalue_CSF, label = "p") +
   scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                 'ALS' = '#B2936F',
                                 'PGMC' = '#ad5291',
@@ -276,7 +276,7 @@ for (i in 1:length(proteins_CSF)) {
     x = "type", y = "NPQ",
     fill = "type", palette = "npg", legend = "none",
     ggtheme = theme_pubr(border = TRUE)) +
-    stat_pvalue_manual(protein_pvalue_CSF_i, label = "p.adj.signif",size = 6) +
+    stat_pvalue_manual(protein_pvalue_CSF_i, label = "p",size = 6) +
     scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                   'ALS' = '#B2936F',
                                   'PGMC' = '#ad5291',
@@ -326,7 +326,7 @@ plot_SERUM <- ggboxplot(
 # Add statistical test p-values
 protein_pvalue_SERUM <- protein_pvalue_SERUM %>%
   filter(Target %in% top10_SERUM) %>% add_xy_position(x = "type")
-plot_SERUM = plot_SERUM + stat_pvalue_manual(protein_pvalue_SERUM, label = "p.adj.signif") +
+plot_SERUM = plot_SERUM + stat_pvalue_manual(protein_pvalue_SERUM, label = "p") +
   scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                 'ALS' = '#B2936F',
                                 'PGMC' = '#ad5291',
@@ -366,7 +366,7 @@ plot_SERUM <- ggboxplot(
 # Add statistical test p-values
 protein_pvalue_SERUM <- protein_pvalue_SERUM %>%
   filter(Target %in% proteins_interest_SERUM) %>% add_xy_position(x = "type")
-plot_SERUM = plot_SERUM + stat_pvalue_manual(protein_pvalue_SERUM, label = "p.adj.signif") +
+plot_SERUM = plot_SERUM + stat_pvalue_manual(protein_pvalue_SERUM, label = "p") +
   scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                 'ALS' = '#B2936F',
                                 'PGMC' = '#ad5291',
@@ -395,7 +395,7 @@ for (i in 1:length(proteins_SERUM)) {
     x = "type", y = "NPQ",
     fill = "type", palette = "npg", legend = "none",
     ggtheme = theme_pubr(border = TRUE)) +
-    stat_pvalue_manual(protein_pvalue_SERUM_i, label = "p.adj.signif", size = 6) +
+    stat_pvalue_manual(protein_pvalue_SERUM_i, label = "p", size = 6) +
     scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                   'ALS' = '#B2936F',
                                   'PGMC' = '#ad5291',
@@ -515,7 +515,7 @@ plot_plasma <- ggboxplot(
 # Add statistical test p-values
 protein_pvalue_plasma_PGMC_CTR_plasma <- protein_pvalue_plasma_PGMC_CTR_plasma %>%
   filter(Target %in% top10_plasma) %>% add_xy_position(x = "type")
-plot_plasma = plot_plasma + stat_pvalue_manual(protein_pvalue_plasma_PGMC_CTR_plasma, label = "p.adj.signif") +
+plot_plasma = plot_plasma + stat_pvalue_manual(protein_pvalue_plasma_PGMC_CTR_plasma, label = "p") +
   scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                 'ALS' = '#B2936F',
                                 'PGMC' = '#ad5291',
@@ -554,7 +554,7 @@ plot_PLASMA <- ggboxplot(
 # Add statistical test p-values
 protein_pvalue_PGMC_CTR_PLASMA <- protein_pvalue_PGMC_CTR_PLASMA %>%
   filter(Target %in% proteins_interest_plasma) %>% add_xy_position(x = "type")
-plot_PLASMA = plot_PLASMA + stat_pvalue_manual(protein_pvalue_PGMC_CTR_PLASMA, label = "p.adj.signif") +
+plot_PLASMA = plot_PLASMA + stat_pvalue_manual(protein_pvalue_PGMC_CTR_PLASMA, label = "p") +
   scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                 'ALS' = '#B2936F',
                                 'PGMC' = '#ad5291',
@@ -585,7 +585,7 @@ for (i in 1:length(proteins_PLASMA)) {
     x = "type", y = "NPQ",
     fill = "type", palette = "npg", legend = "none",
     ggtheme = theme_pubr(border = TRUE)) +
-    stat_pvalue_manual(protein_pvalue_PLASMA_i, label = "p.adj.signif",size = 6) +
+    stat_pvalue_manual(protein_pvalue_PLASMA_i, label = "p",size = 6) +
     scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                   'ALS' = '#B2936F',
                                   'PGMC' = '#ad5291',
@@ -636,7 +636,7 @@ plot_CSF <- ggboxplot(
 # Add statistical test p-values
 protein_pvalue_PGMC_CTR_CSF <- protein_pvalue_PGMC_CTR_CSF %>%
   filter(Target %in% top10_CSF) %>% add_xy_position(x = "type")
-plot_CSF = plot_CSF + stat_pvalue_manual(protein_pvalue_PGMC_CTR_CSF, label = "p.adj.signif") +
+plot_CSF = plot_CSF + stat_pvalue_manual(protein_pvalue_PGMC_CTR_CSF, label = "p") +
   scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                 'ALS' = '#B2936F',
                                 'PGMC' = '#ad5291',
@@ -675,7 +675,7 @@ plot_CSF <- ggboxplot(
 # Add statistical test p-values
 protein_pvalue_PGMC_CTR_CSF <- protein_pvalue_PGMC_CTR_CSF %>%
   filter(Target %in% proteins_interest_CSF) %>% add_xy_position(x = "type")
-plot_CSF = plot_CSF + stat_pvalue_manual(protein_pvalue_PGMC_CTR_CSF, label = "p.adj.signif") +
+plot_CSF = plot_CSF + stat_pvalue_manual(protein_pvalue_PGMC_CTR_CSF, label = "p") +
   scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                 'ALS' = '#B2936F',
                                 'PGMC' = '#ad5291',
@@ -706,7 +706,7 @@ for (i in 1:length(proteins_CSF)) {
     x = "type", y = "NPQ",
     fill = "type", palette = "npg", legend = "none",
     ggtheme = theme_pubr(border = TRUE)) +
-    stat_pvalue_manual(protein_pvalue_CSF_i, label = "p.adj.signif",size = 6) +
+    stat_pvalue_manual(protein_pvalue_CSF_i, label = "p",size = 6) +
     scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                   'ALS' = '#B2936F',
                                   'PGMC' = '#ad5291',
@@ -757,7 +757,7 @@ plot_SERUM <- ggboxplot(
 # Add statistical test p-values
 protein_pvalue_PGMC_CTR_SERUM <- protein_pvalue_PGMC_CTR_SERUM %>%
   filter(Target %in% top10_SERUM) %>% add_xy_position(x = "type")
-plot_SERUM = plot_SERUM + stat_pvalue_manual(protein_pvalue_PGMC_CTR_SERUM, label = "p.adj.signif") +
+plot_SERUM = plot_SERUM + stat_pvalue_manual(protein_pvalue_PGMC_CTR_SERUM, label = "p") +
   scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                 'ALS' = '#B2936F',
                                 'PGMC' = '#ad5291',
@@ -796,7 +796,7 @@ plot_SERUM <- ggboxplot(
 # Add statistical test p-values
 protein_pvalue_PGMC_CTR_SERUM <- protein_pvalue_PGMC_CTR_SERUM %>%
   filter(Target %in% proteins_interest_SERUM) %>% add_xy_position(x = "type")
-plot_SERUM = plot_SERUM + stat_pvalue_manual(protein_pvalue_PGMC_CTR_SERUM, label = "p.adj.signif") +
+plot_SERUM = plot_SERUM + stat_pvalue_manual(protein_pvalue_PGMC_CTR_SERUM, label = "p") +
   scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                 'ALS' = '#B2936F',
                                 'PGMC' = '#ad5291',
@@ -827,7 +827,7 @@ for (i in 1:length(proteins_SERUM)) {
     x = "type", y = "NPQ",
     fill = "type", palette = "npg", legend = "none",
     ggtheme = theme_pubr(border = TRUE)) +
-    stat_pvalue_manual(protein_pvalue_SERUM_i, label = "p.adj.signif",size = 6) +
+    stat_pvalue_manual(protein_pvalue_SERUM_i, label = "p",size = 6) +
     scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                   'ALS' = '#B2936F',
                                   'PGMC' = '#ad5291',
