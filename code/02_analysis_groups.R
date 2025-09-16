@@ -857,7 +857,7 @@ protein_data_PCA = protein_data_IDs %>%
   mutate(subtype = ifelse(subtype == "CTR" | is.na(subtype),"No subtype",
                           ifelse(subtype == "C9orf72","C9orf72",
                                  ifelse(subtype == "SOD1","SOD1",
-                                        ifelse(subtype == "TARBDP","TARDBP",
+                                        ifelse(subtype == "TARDBP","TARDBP",
                                                ifelse(subtype == "FUS","FUS",
                                                       "other"))))))
 
@@ -919,7 +919,7 @@ plot_pca <- function(pca_res, title) {
     mutate(
       subtype = factor(
         subtype,
-        levels = c("No subtype", "C9orf72", "SOD1", "FUS", "other")
+        levels = c("No subtype", "C9orf72", "SOD1", "TARDBP","FUS","other")
       )
     )
   
@@ -955,5 +955,103 @@ dev.off()
 pdf("plots/PCA_CSF.pdf",width = 8,height = 6.5)
 plots[[3]]
 dev.off()
+
+# PCA of all fluids together
+protein_data_PCA_all = protein_data_IDs %>%
+  filter(SampleMatrixType %in% c("CSF","SERUM","PLASMA"))  %>%
+  select(SampleName, Target, NPQ,SampleMatrixType)
+
+# -> function to run PCA per SampleMatrixType
+run_pca_all <- function(df) {
+  
+  # Ensure NPQ is numeric
+  df <- df %>%
+    mutate(NPQ = suppressWarnings(as.numeric(NPQ)))
+  
+  # Reshape wide
+  df_wide <- df %>%
+    tidyr::pivot_wider(
+      names_from = Target,
+      values_from = NPQ,
+      values_fill = 0
+    )
+  
+  # Metadata
+  meta <- df_wide %>%
+    dplyr::select(SampleName, SampleMatrixType)
+  
+  # Numeric matrix for PCA
+  X <- df_wide %>%
+    dplyr::select(-SampleName, -SampleMatrixType)
+  
+  # Force numeric (some columns may still be character/factor)
+  X <- X %>% mutate(across(everything(), ~ suppressWarnings(as.numeric(.x))))
+  
+  # X <- X %>% select(where(~ {
+  #   s <- sd(.x, na.rm = TRUE)
+  #   !is.na(s) && s > 0
+  # }))
+  
+  # Drop columns with all NA or zero variance
+  X <- X %>%
+    dplyr::select(where(~ {
+      all_na <- all(is.na(.x))
+      s <- sd(.x, na.rm = TRUE)
+      !all_na && !is.na(s) && s > 0
+    }))
+
+  # Replace remaining NA with 0 
+  X[is.na(X)] <- 0
+  X <- X[,!names(X) %in% c("APOE4","CRP")]
+  
+  print(X)
+  
+  # PCA
+  pca <- prcomp(X, scale. = TRUE)
+  
+  scores <- as_tibble(pca$x[, 1:2]) %>%
+    bind_cols(meta)
+  
+  list(scores = scores, pca = pca)
+}
+
+pca_results <- run_pca_all(protein_data_PCA_all)
+
+my_colors <- c(
+  'CSF'    = '#1B9E77',
+  'PLASMA' = '#D95F02',
+  'SERUM'  = '#7570B3'
+)
+# -> Plot PCA all together
+plot_pca_all <- function(pca_res) {
+  pca <- pca_res$pca
+  scores <- pca_res$scores
+  
+  ggplot(scores, aes(x = PC1, y = PC2, color = SampleMatrixType)) +
+    geom_point(size = 5, alpha = 0.8) +
+    scale_color_manual(values = my_colors) +
+    theme_minimal(base_size = 16) +
+    labs(
+      title = paste("PCA with all fluids"),
+      x = paste0("PC1 (", round(100 * summary(pca)$importance[2,1], 1), "%)"),
+      y = paste0("PC2 (", round(100 * summary(pca)$importance[2,2], 1), "%)"),
+      color = "Fluid"
+    ) +
+    theme(
+      text = element_text(size = 16),               # Base font size for everything
+      axis.title = element_text(size = 18),         # Axis titles
+      axis.text = element_text(size = 16),          # Axis tick labels
+      plot.title = element_text(size = 18, hjust = 0.5,face = "bold"),
+      legend.title = element_text(size = 17),
+      legend.text = element_text(size = 16)
+    )
+}
+
+pdf("plots/PCA_all_fluids.pdf",width = 8,height = 6.5)
+plot_pca_all(pca_results)
+dev.off()
+
+
+
 
 

@@ -135,7 +135,7 @@ clinical_table_slim <- clinical_table_extended %>%
 clinical_table_slim <- clinical_table_slim %>%
   select(PatientID,ParticipantCode,type,Comment,age,sex,MutationType,PreciseMutation,
          Erfassungsdatum,ALSFRS,DatePhenoconversion,contains("LFU")) %>%
-  group_by(PatientID, ParticipantCode, type, age, sex, MutationType, PreciseMutation) %>% 
+  group_by(PatientID, ParticipantCode, type, age, sex,MutationType, PreciseMutation) %>% 
  # arrange(Erfassungsdatum, .by_group = TRUE) %>%  # make sure order is consistent
   mutate(obs = row_number()) %>%
   pivot_wider(
@@ -143,9 +143,17 @@ clinical_table_slim <- clinical_table_slim %>%
     values_from = c(ALSFRS, Erfassungsdatum),
     names_sep = "_"
   ) %>%
+  group_by(PatientID, ParticipantCode, type, age, sex) %>% 
+  mutate(obs = row_number()) %>%
+  pivot_wider(
+    names_from = obs,
+    values_from = c(MutationType, PreciseMutation),
+    names_sep = "_"
+  ) %>%
   ungroup() %>%
-  select(PatientID,ParticipantCode,type,Comment,age,sex,MutationType,PreciseMutation,
-         contains("Erfassungsdatum"),contains("ALSFRS"),DatePhenoconversion,contains("LFU"))
+  select(PatientID,ParticipantCode,type,Comment,age,sex,contains("MutationType"),
+         contains("PreciseMutation"), contains("Erfassungsdatum"),
+         contains("ALSFRS"),DatePhenoconversion,contains("LFU"))
 
 writexl::write_xlsx(clinical_table_slim,"results/clinical_table.xlsx")
 
