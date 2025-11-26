@@ -2,6 +2,7 @@
 library(dplyr)
 library(readr)
 library(readxl)
+library(writexl)
 library(ggplot2)
 library(tibble)
 library(ggrepel)
@@ -14,6 +15,7 @@ library(rstatix)
 library(ggpubr)
 library(skimr)
 library(ggExtra)
+library(RColorBrewer)
 
 ### Directories
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
@@ -70,6 +72,14 @@ PGMC_mutations_ID <- PGMC_mutations_ID %>%
                                      ifelse(MutationTypeFUS==1,"FUS",
                                             ifelse(MutationTypeOther==1 | MutationTypeFIG4==1 |MutationTypeUBQLN2==1,"other",NA)))))) %>%
   select(PatientID,ParticipantCode,type)
+
+all_participants_IDs = do.call("rbind",
+                               list(CTR_ID,
+                                    ALS_ID,
+                                    PGMC_ID,
+                                    mimic_ID,
+                                    PGMC_mutations_ID))
+writexl::write_xlsx(all_participants_IDs,"results/all_participants_IDs.xlsx")
 
 # information on sample IDs
 sample_ID_info <- read_excel("data input/Biospecimen Manifest Form – Banner Biomarker Program_premodiALS.xlsx", 
