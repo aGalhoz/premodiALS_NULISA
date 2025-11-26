@@ -112,7 +112,7 @@ extract_pvalues <- function(stats_list) {
     arrange(pvalue_anova)
   
   pw_final = pw_final[,c(1,3,2,4:ncol(pw_final))]
- 
+  
   return(pw_final)
 }
 
@@ -143,7 +143,7 @@ get_pairwise_sig <- function(stats_list, fluid, proteins, df_top, p_cutoff = 0.1
     group_by(Target) %>%
     mutate(
       comparison_index = row_number(),
-      y.position = max_y * (0.9 + 0.1 * (comparison_index - 1))
+      y.position = max_y * (1.1 + 0.15 * (comparison_index - 1))
     ) %>%
     ungroup()
   
@@ -214,7 +214,7 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15) {
       x = "Group",
       y = "NPQ",
       title = paste("Top", top_n, "Protein Expression -", fluid)
-      ) +
+    ) +
     theme(
       panel.background  = element_rect(fill = "white", color = NA),
       plot.background   = element_rect(fill = "white", color = NA),
@@ -248,7 +248,7 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15) {
   #     hjust = 0,
   #     inherit.aes = FALSE
   #   )
-    
+  
   # Add pairwise p-values only if available
   if (!is.null(pairwise_res) && nrow(pairwise_res) > 0) {
     p <- p + stat_pvalue_manual(
@@ -351,12 +351,12 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein) {
   #     strip.background = element_blank(),
   #     strip.text = element_blank()
   #   )
-    
+  
   if (nrow(pairwise_res) > 0) {
     p <- p + stat_pvalue_manual(
       pairwise_res,
       label = "p",
-      bracket.nudge.y = 0.1 * max_val,
+      bracket.nudge.y = 0.15 * max_val,
       size = 6,
       # xmin = "group1",
       # xmax = "group2",
@@ -447,11 +447,7 @@ my_colors <- c(
   'CTR'    = '#6F8EB2',
   'ALS'    = '#B2936F',
   'PGMC'   = '#ad5291',
-  'mimic'  = '#62cda9',
-  'other'  = '#ad5291',
-  'C9orf72'= '#55aa82',
-  'SOD1'   = '#4661b9',
-  'TARDBP' = '#B99E46'
+  'mimic'  = '#62cda9'
 )
 
 # Step 5: Plot function
@@ -464,6 +460,8 @@ plot_pca <- function(pca_res, title) {
         levels = c("No subtype", "C9orf72", "SOD1", "TARDBP","FUS","other")
       )
     )
+  
+  scores$type <- factor(scores$type, levels = names(my_colors))
   
   ggplot(scores, aes(x = PC1, y = PC2, color = type, shape = subtype)) +
     geom_point(size = 5, alpha = 0.8) +
@@ -525,9 +523,6 @@ run_pca_all <- function(df) {
   
   # Replace remaining NA with 0 
   X[is.na(X)] <- 0
-  X <- X[,!names(X) %in% c("APOE4","CRP")]
-  
-  print(X)
   
   # PCA
   pca <- prcomp(X, scale. = TRUE)
@@ -543,6 +538,30 @@ my_colors <- c(
   'PLASMA' = '#D95F02',
   'SERUM'  = '#7570B3'
 )
+
+plot_pca_all = function(pca_res) {
+  pca <- pca_res$pca
+  scores <- pca_res$scores
+  
+  ggplot(scores, aes(x = PC1, y = PC2, color = SampleMatrixType)) +
+    geom_point(size = 5, alpha = 0.8) +
+    scale_color_manual(values = my_colors) +
+    theme_minimal(base_size = 16) +
+    labs(
+      title = paste("PCA with all fluids"),
+      x = paste0("PC1 (", round(100 * summary(pca)$importance[2,1], 1), "%)"),
+      y = paste0("PC2 (", round(100 * summary(pca)$importance[2,2], 1), "%)"),
+      color = "Fluid"
+    ) +
+    theme(
+      text = element_text(size = 16),               # Base font size for everything
+      axis.title = element_text(size = 18),         # Axis titles
+      axis.text = element_text(size = 16),          # Axis tick labels
+      plot.title = element_text(size = 18, hjust = 0.5,face = "bold"),
+      legend.title = element_text(size = 17),
+      legend.text = element_text(size = 16)
+    )
+}
 
 ###############################################################################
 # Run pipeline
@@ -613,5 +632,3 @@ pca_results_all <- run_pca_all(protein_data_PCA_all)
 pdf("plots/PCA_all_fluids.pdf", width = 8, height = 6.5)
 plot_pca_all(pca_results_all)
 dev.off()
-
-
