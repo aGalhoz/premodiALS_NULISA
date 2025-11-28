@@ -205,7 +205,10 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15) {
   p <- ggplot(df_top, aes(x = type, y = NPQ, fill = type)) +
     geom_violin(trim = FALSE, alpha = 0.4) +
     geom_boxplot(width = 0.2, outlier.shape = NA) +
-    geom_jitter(aes(color = subtype),width = 0.15, alpha = 0.5, size = 2) +
+    geom_jitter(data = subset(df_top, type != "others"),
+                aes(color = subtype), width = 0.15, alpha = 0.5, size = 2) +
+    geom_jitter(data = subset(df_top, type == "others"),
+                aes(color = subtype), position = position_dodge(width = 0.8), alpha = 0.5, size = 2) +
     facet_wrap(~Target, scales = "free_y") +
     scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                    'ALS' = '#B2936F',
@@ -225,7 +228,7 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15) {
                                   'FUS' = '#b96546',
                                   'other' = '#b94661',
                                   'FIG4' = '#5ba37f',
-                                  'UBQLN2' = '#3fa75b')) +
+                                  'UBQLN2' = '#6546B9')) +
     labs(
       x = "Group",
       y = "NPQ",
@@ -307,7 +310,10 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein) {
   
   p <- ggplot(df_prot, aes(x = type, y = NPQ, fill = type)) +
     geom_violin(trim = FALSE, alpha = 0.4) +
-    geom_jitter(aes(color = subtype),width = 0.15, alpha = 0.5, size = 2) +
+    geom_jitter(data = subset(df_prot, type != "others"),
+                aes(color = subtype), width = 0.15, alpha = 0.5, size = 2) +
+    geom_jitter(data = subset(df_prot, type == "others"),
+                aes(color = subtype), position = position_dodge(width = 0.8), alpha = 0.5, size = 2) +
     scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                   'ALS' = '#B2936F',
                                   'PGMC' = '#ad5291',
@@ -326,7 +332,7 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein) {
                                    'FUS' = '#b96546',
                                    'other' = '#b94661',
                                    'FIG4' = '#5ba37f',
-                                   'UBQLN2' = '#3fa75b')) +
+                                   'UBQLN2' = '#6546B9')) +
     labs(
       x = "Group",
       y = "NPQ",
@@ -425,12 +431,12 @@ run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL") {
     
     # Top 15 plot (violin)
     p_top15 <- plot_top_proteins_violin(df, stats, td, fluid)
-    ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_noLOD", fluid, ".pdf"),
+    ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_noLOD", fluid, "_others.pdf"),
            p_top15, width = 15, height = 18)
     
     # All proteins (multi-page PDF)
     targets <- unique(df$Target)
-    pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_noLOD", fluid, ".pdf"),
+    pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_noLOD", fluid, "_others.pdf"),
         width = 6, height = 5.7)
     for (t in targets) {
       p <- plot_single_protein_violin(df, stats, td, fluid, t)
@@ -591,8 +597,8 @@ results_PGMC <- run_full_pipeline(
   protein_data = protein_data,
   sample_map   = samples_PGMC_CTR_ID_type %>% 
     mutate(subtype = type) %>%
-    filter(!type %in% c("FUS","UBQLN2","FIG4","other")),
-    #mutate(type = ifelse(type %in% c("FUS","UBQLN2","FIG4","other"),"others",type)),
+    #filter(!type %in% c("FUS","UBQLN2","FIG4","other")),
+    mutate(type = ifelse(type %in% c("FUS","UBQLN2","FIG4","other"),"others",type)),
   td           = td,
   prefix       = "PGMCvsCTR"
 )
