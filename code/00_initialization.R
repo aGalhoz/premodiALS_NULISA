@@ -70,7 +70,9 @@ PGMC_mutations_ID <- PGMC_mutations_ID %>%
                        ifelse(MutationTypeSOD1 == 1,"SOD1",
                               ifelse(MutationTypeTARDBP == 1,"TARDBP",
                                      ifelse(MutationTypeFUS==1,"FUS",
-                                            ifelse(MutationTypeOther==1 | MutationTypeFIG4==1 |MutationTypeUBQLN2==1,"other",NA)))))) %>%
+                                            ifelse(MutationTypeFIG4==1,"FIG4",
+                                                   ifelse(MutationTypeUBQLN2==1,"UBQLN2",
+                                            ifelse(MutationTypeOther==1,"other",NA)))))))) %>%
   select(PatientID,ParticipantCode,type)
 
 all_participants_IDs = do.call("rbind",

@@ -36,11 +36,16 @@ run_stats_for_fluid <- function(df, fluid) {
   }
   
   # Welch t-tests
-  pairwise_res <- df_f %>%
-    filter(type %in% c("ALS","CTR","PGMC","mimic","C9orf72","SOD1","TARDBP")) %>%
+  pairwise_raw <- df_f %>%
+    #filter(type %in% c("ALS","CTR","PGMC","mimic","C9orf72","SOD1","TARDBP","others")) %>%
     group_by(Target) %>%
     rstatix::t_test(NPQ ~ type, var.equal = FALSE) %>%
-    adjust_pvalue(method = "BH") %>%
+    ungroup()
+  
+  pairwise_res <- pairwise_raw %>%
+    group_by(group1, group2) %>%    
+    adjust_pvalue(method = "BH") %>% 
+    ungroup() %>%
     add_significance() %>%
     mutate(Fluid = fluid, Model = "Pairwise")
   
@@ -112,7 +117,7 @@ extract_pvalues <- function(stats_list) {
     arrange(pvalue_anova)
   
   pw_final = pw_final[,c(1,3,2,4:ncol(pw_final))]
-  
+ 
   return(pw_final)
 }
 
@@ -143,7 +148,7 @@ get_pairwise_sig <- function(stats_list, fluid, proteins, df_top, p_cutoff = 0.1
     group_by(Target) %>%
     mutate(
       comparison_index = row_number(),
-      y.position = max_y * (1.1 + 0.15 * (comparison_index - 1))
+      y.position = max_y * (1.1 + 0.1 * (comparison_index - 1))
     ) %>%
     ungroup()
   
@@ -169,7 +174,7 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15) {
   top_proteins <- top_proteins_df$Target
   df_top <- df %>% filter(SampleMatrixType == fluid, 
                           Target %in% top_proteins,
-                          type %in% c("ALS","CTR","PGMC","mimic","C9orf72","SOD1","TARDBP"))
+                          type %in% c("ALS","CTR","PGMC","mimic","C9orf72","SOD1","TARDBP","others"))
   
   if(nrow(df_top) == 0) {
     warning("No data for top proteins in ", fluid, "; skipping plot.")
@@ -189,10 +194,10 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15) {
     mutate(y_position_text = LOD_val * 1.02) %>%
     ungroup()
   
-  pgmc_mutation_proteins <- c("C9orf72", "SOD1", "TARDBP")
+  pgmc_mutation_proteins <- c("CTR","C9orf72", "SOD1", "TARDBP","others")
   df_top <- df_top %>%
     mutate(type = case_when(
-      type %in% pgmc_mutation_proteins ~ factor(type, levels = c("CTR", "C9orf72", "SOD1", "TARDBP")),
+      type %in% pgmc_mutation_proteins ~ factor(type, levels = c("CTR", "C9orf72", "SOD1", "TARDBP","others")),
       TRUE ~ factor(type, levels = c("CTR", "PGMC", "ALS", "mimic"))
     ))
   
@@ -200,21 +205,32 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15) {
   p <- ggplot(df_top, aes(x = type, y = NPQ, fill = type)) +
     geom_violin(trim = FALSE, alpha = 0.4) +
     geom_boxplot(width = 0.2, outlier.shape = NA) +
-    geom_jitter(width = 0.15, alpha = 0.5) +
+    geom_jitter(aes(color = subtype),width = 0.15, alpha = 0.5, size = 2) +
     facet_wrap(~Target, scales = "free_y") +
     scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
+                                   'ALS' = '#B2936F',
+                                   'PGMC' = '#ad5291',
+                                   'mimic' = '#62cda9',
+                                   'C9orf72' = '#55aa82',
+                                   'SOD1' = '#4661b9',
+                                   'TARDBP' = '#B99E46',
+                                   'others' = '#888888')) +
+    scale_color_manual(values  = c('CTR' = '#6F8EB2',  
                                   'ALS' = '#B2936F',
                                   'PGMC' = '#ad5291',
                                   'mimic' = '#62cda9',
-                                  'other' = '#ad5291',
                                   'C9orf72' = '#55aa82',
                                   'SOD1' = '#4661b9',
-                                  'TARDBP' = '#B99E46')) +
+                                  'TARDBP' = '#B99E46',
+                                  'FUS' = '#b96546',
+                                  'other' = '#b94661',
+                                  'FIG4' = '#5ba37f',
+                                  'UBQLN2' = '#3fa75b')) +
     labs(
       x = "Group",
       y = "NPQ",
       title = paste("Top", top_n, "Protein Expression -", fluid)
-    ) +
+      ) +
     theme(
       panel.background  = element_rect(fill = "white", color = NA),
       plot.background   = element_rect(fill = "white", color = NA),
@@ -231,14 +247,14 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15) {
     ) 
   
   
-  # Add LOD lines and labels
-  p <- p +
-    geom_hline(
-      data = lod_df %>% tidyr::unnest(LOD_val),
-      aes(yintercept = LOD_val),
-      linetype = "dashed",
-      color = "gray55"
-    ) 
+  # # Add LOD lines and labels
+  # p <- p +
+  #   geom_hline(
+  #     data = lod_df %>% tidyr::unnest(LOD_val),
+  #     aes(yintercept = LOD_val),
+  #     linetype = "dashed",
+  #     color = "gray55"
+  #   ) 
   # +
   #   geom_text(
   #     data = lod_df %>% mutate(label = paste("LOD =", paste(signif(LOD_val, 3), collapse = ", "))),
@@ -248,7 +264,7 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15) {
   #     hjust = 0,
   #     inherit.aes = FALSE
   #   )
-  
+    
   # Add pairwise p-values only if available
   if (!is.null(pairwise_res) && nrow(pairwise_res) > 0) {
     p <- p + stat_pvalue_manual(
@@ -271,16 +287,16 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein) {
   
   df_prot <- df %>% filter(SampleMatrixType == fluid, 
                            Target == protein,
-                           type %in% c("ALS","CTR","PGMC","mimic","C9orf72","SOD1","TARDBP"))
+                           type %in% c("ALS","CTR","PGMC","mimic","C9orf72","SOD1","TARDBP","others"))
   anova_p <- stats_list$anova %>% filter(Target == protein) %>% pull(p)
   pairwise_res <- get_pairwise_sig(stats_list, fluid, protein, df_top = df_prot)
   
   # Determine type order
-  pgmc_mutation_proteins <- c("C9orf72", "SOD1", "TARDBP")
+  pgmc_mutation_proteins <- c("CTR","C9orf72", "SOD1", "TARDBP","others")
   
   df_prot = df_prot %>%
     mutate(type = case_when(
-      type %in% pgmc_mutation_proteins ~ factor(type, levels = c("CTR", "C9orf72", "SOD1", "TARDBP")),
+      type %in% pgmc_mutation_proteins ~ factor(type, levels = c("CTR", "C9orf72", "SOD1", "TARDBP","others")),
       TRUE ~ factor(type, levels = c("CTR", "PGMC", "ALS", "mimic"))
     ))
   
@@ -291,23 +307,35 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein) {
   
   p <- ggplot(df_prot, aes(x = type, y = NPQ, fill = type)) +
     geom_violin(trim = FALSE, alpha = 0.4) +
-    geom_jitter(width = 0.15, alpha = 0.5) +
+    geom_jitter(aes(color = subtype),width = 0.15, alpha = 0.5, size = 2) +
     scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
                                   'ALS' = '#B2936F',
                                   'PGMC' = '#ad5291',
                                   'mimic' = '#62cda9',
-                                  'other' = '#ad5291',
                                   'C9orf72' = '#55aa82',
                                   'SOD1' = '#4661b9',
-                                  'TARDBP' = '#B99E46')) +
+                                  'TARDBP' = '#B99E46',
+                                  'others' = '#888888')) +
+    scale_color_manual(values  = c('CTR' = '#6F8EB2',  
+                                   'ALS' = '#B2936F',
+                                   'PGMC' = '#ad5291',
+                                   'mimic' = '#62cda9',
+                                   'C9orf72' = '#55aa82',
+                                   'SOD1' = '#4661b9',
+                                   'TARDBP' = '#B99E46',
+                                   'FUS' = '#b96546',
+                                   'other' = '#b94661',
+                                   'FIG4' = '#5ba37f',
+                                   'UBQLN2' = '#3fa75b')) +
     labs(
       x = "Group",
       y = "NPQ",
       title = paste(protein),
-      subtitle = paste("ANOVA p =", signif(anova_p, 3),
-                       "; LOD1 =", signif(LOD_val[1],3), 
-                       "; LOD2 =", signif(LOD_val[2],3))
-    ) +
+      subtitle = paste("ANOVA p =", signif(anova_p, 3))) +
+    #                    ,
+    #                    "; LOD1 =", signif(LOD_val[1],3), 
+    #                    "; LOD2 =", signif(LOD_val[2],3))
+    # ) +
     theme_test() + 
     theme(
       panel.background  = element_rect(fill = "white", color = NA),
@@ -322,15 +350,17 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein) {
       legend.title = element_text(size = 16, face = "bold"),
       legend.text = element_text(size = 14),
       legend.position = "none"
-    ) +
-    geom_hline(yintercept = LOD_val, linetype = "dashed", color = "gray55") +
-    annotate("text",
-             x = 3.5,
-             y = LOD_val * 1.02,
-             label = paste0("LOD = ", signif(LOD_val, 3)),
-             color = "gray55",
-             hjust = 0,
-             size = 5)
+    ) 
+  # +
+  #   geom_hline(yintercept = LOD_val, linetype = "dashed", color = "gray55")
+  # +
+  #   annotate("text",
+  #            x = 3.5,
+  #            y = LOD_val * 1.02,
+  #            label = paste0("LOD = ", signif(LOD_val, 3)),
+  #            color = "gray55",
+  #            hjust = 0,
+  #            size = 5)
   
   # p <- p +
   #   annotation_custom(
@@ -351,12 +381,12 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein) {
   #     strip.background = element_blank(),
   #     strip.text = element_blank()
   #   )
-  
+    
   if (nrow(pairwise_res) > 0) {
     p <- p + stat_pvalue_manual(
       pairwise_res,
       label = "p",
-      bracket.nudge.y = 0.15 * max_val,
+      bracket.nudge.y = 0.05 * max_val,
       size = 6,
       # xmin = "group1",
       # xmax = "group2",
@@ -365,7 +395,7 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein) {
     )
   }
   
-  p = p + expand_limits(y = max_val * 1.25)
+  p = p + scale_y_continuous(expand = expansion(mult = c(0.01, 0.05)))
   
   return(p)
 }
@@ -395,12 +425,12 @@ run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL") {
     
     # Top 15 plot (violin)
     p_top15 <- plot_top_proteins_violin(df, stats, td, fluid)
-    ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_", fluid, ".pdf"),
+    ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_noLOD", fluid, ".pdf"),
            p_top15, width = 15, height = 18)
     
     # All proteins (multi-page PDF)
     targets <- unique(df$Target)
-    pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_", fluid, ".pdf"),
+    pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_noLOD", fluid, ".pdf"),
         width = 6, height = 5.7)
     for (t in targets) {
       p <- plot_single_protein_violin(df, stats, td, fluid, t)
@@ -447,7 +477,11 @@ my_colors <- c(
   'CTR'    = '#6F8EB2',
   'ALS'    = '#B2936F',
   'PGMC'   = '#ad5291',
-  'mimic'  = '#62cda9'
+  'mimic'  = '#62cda9',
+  'other'  = '#ad5291',
+  'C9orf72'= '#55aa82',
+  'SOD1'   = '#4661b9',
+  'TARDBP' = '#B99E46'
 )
 
 # Step 5: Plot function
@@ -460,8 +494,6 @@ plot_pca <- function(pca_res, title) {
         levels = c("No subtype", "C9orf72", "SOD1", "TARDBP","FUS","other")
       )
     )
-  
-  scores$type <- factor(scores$type, levels = names(my_colors))
   
   ggplot(scores, aes(x = PC1, y = PC2, color = type, shape = subtype)) +
     geom_point(size = 5, alpha = 0.8) +
@@ -523,6 +555,9 @@ run_pca_all <- function(df) {
   
   # Replace remaining NA with 0 
   X[is.na(X)] <- 0
+  X <- X[,!names(X) %in% c("APOE4","CRP")]
+  
+  print(X)
   
   # PCA
   pca <- prcomp(X, scale. = TRUE)
@@ -539,30 +574,6 @@ my_colors <- c(
   'SERUM'  = '#7570B3'
 )
 
-plot_pca_all = function(pca_res) {
-  pca <- pca_res$pca
-  scores <- pca_res$scores
-  
-  ggplot(scores, aes(x = PC1, y = PC2, color = SampleMatrixType)) +
-    geom_point(size = 5, alpha = 0.8) +
-    scale_color_manual(values = my_colors) +
-    theme_minimal(base_size = 16) +
-    labs(
-      title = paste("PCA with all fluids"),
-      x = paste0("PC1 (", round(100 * summary(pca)$importance[2,1], 1), "%)"),
-      y = paste0("PC2 (", round(100 * summary(pca)$importance[2,2], 1), "%)"),
-      color = "Fluid"
-    ) +
-    theme(
-      text = element_text(size = 16),               # Base font size for everything
-      axis.title = element_text(size = 18),         # Axis titles
-      axis.text = element_text(size = 16),          # Axis tick labels
-      plot.title = element_text(size = 18, hjust = 0.5,face = "bold"),
-      legend.title = element_text(size = 17),
-      legend.text = element_text(size = 16)
-    )
-}
-
 ###############################################################################
 # Run pipeline
 ###############################################################################
@@ -570,7 +581,7 @@ plot_pca_all = function(pca_res) {
 ## 1. All samples
 results_ALL <- run_full_pipeline(
   protein_data    = protein_data,
-  sample_map      = samples_ID_type,
+  sample_map      = samples_ID_type %>% mutate(subtype = type),
   td              = td,
   prefix          = "ALLsamples"
 )
@@ -578,7 +589,10 @@ results_ALL <- run_full_pipeline(
 ## 2. PGMC mutation analysis
 results_PGMC <- run_full_pipeline(
   protein_data = protein_data,
-  sample_map   = samples_PGMC_CTR_ID_type,
+  sample_map   = samples_PGMC_CTR_ID_type %>% 
+    mutate(subtype = type) %>%
+    filter(!type %in% c("FUS","UBQLN2","FIG4","other")),
+    #mutate(type = ifelse(type %in% c("FUS","UBQLN2","FIG4","other"),"others",type)),
   td           = td,
   prefix       = "PGMCvsCTR"
 )
@@ -632,3 +646,5 @@ pca_results_all <- run_pca_all(protein_data_PCA_all)
 pdf("plots/PCA_all_fluids.pdf", width = 8, height = 6.5)
 plot_pca_all(pca_results_all)
 dev.off()
+
+

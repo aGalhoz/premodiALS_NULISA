@@ -137,6 +137,10 @@ samples_ID_type <- sample_ID_info %>%
   rename(ParticipantCode = `Optional Informarion (patient ID)`) %>%
   left_join(bind_rows(ALS_ID, CTR_ID, PGMC_ID, mimic_ID), by = "ParticipantCode")
 
+samples_PGMC_CTR_ID_type = sample_ID_info %>%
+  rename(ParticipantCode = `Optional Informarion (patient ID)`) %>%
+  left_join(bind_rows(CTR_ID,PGMC_mutations_ID), by = "ParticipantCode")
+
 ###############################################
 ### 2. Missing ID mapping
 ###############################################

@@ -26,7 +26,18 @@ DE_subgroups_plasma = DE_subgroups_plasma %>%
          log2FC_ALS_PGMC = mean_NPQ_ALS-mean_NPQ_PGMC,
          log2FC_mimic_CTR = mean_NPQ_mimic - mean_NPQ_CTR,
          log2FC_PGMC_CTR = mean_NPQ_PGMC - mean_NPQ_CTR) %>%
-  left_join(protein_pvalue_summary_plasma)
+  left_join(protein_pvalue_summary_plasma) 
+
+DE_subgroups_plasma_final <- DE_subgroups_plasma %>%
+  select(Target,UniProtID,SampleMatrixType,
+         contains("ALS_CTR"),contains("CTR_ALS"),
+         contains("ALS_PGMC"),contains("PGMC_ALS"),
+         contains("mimic_CTR"),contains("CTR_mimic"),
+         contains("PGMC_CTR")) %>%
+  rename_with(~ gsub("CTR_ALS", "ALS_CTR", .x), .cols = contains("CTR_ALS")) %>%
+  rename_with(~ gsub("PGMC_ALS", "ALS_PGMC", .x), .cols = contains("PGMC_ALS")) %>%
+  rename_with(~ gsub("CTR_mimic", "mimic_CTR", .x), .cols = contains("CTR_mimic"))
+writexl::write_xlsx(DE_subgroups_plasma_final,"results/DE_subgroups_plasma.xlsx")
 
 # -> Plasma (PGMC subgroups)
 DE_PGMC_subgroups_plasma = protein_data_PGMC_CTR_IDs %>%
@@ -54,8 +65,22 @@ DE_PGMC_subgroups_plasma = DE_PGMC_subgroups_plasma %>%
   mutate(log2FC_C9orf72_CTR = mean_NPQ_C9orf72 - mean_NPQ_CTR,
          log2FC_SOD1_CTR = mean_NPQ_SOD1 - mean_NPQ_CTR,
          log2FC_C9orf72_SOD1 = mean_NPQ_C9orf72 - mean_NPQ_SOD1,
-         log2FC_TARDBP_CTR = mean_NPQ_TARDBP - mean_NPQ_CTR) %>%
+         log2FC_TARDBP_CTR = mean_NPQ_TARDBP - mean_NPQ_CTR,
+         log2FC_C9orf72_TARDBP = mean_NPQ_C9orf72 - mean_NPQ_TARDBP) %>%
   left_join(protein_pvalue_PGMC_CTR_summary_plasma)
+
+DE_PGMC_subgroups_plasma_final <- DE_PGMC_subgroups_plasma %>%
+  select(Target,UniProtID,SampleMatrixType,
+         contains("C9orf72_CTR"),contains("CTR_C9orf72"),
+         contains("TARDBP_CTR"),contains("CTR_TARDBP"),
+         contains("SOD1_CTR"),contains("CTR_SOD1"),
+         contains("C9orf72_SOD1"),contains("C9orf72_TARDBP")) %>%
+  rename_with(~ gsub("CTR_C9orf72", "C9orf72_CTR", .x), .cols = contains("CTR_C9orf72")) %>%
+  rename_with(~ gsub("CTR_TARDBP", "TARDBP_CTR", .x), .cols = contains("CTR_TARDBP")) %>%
+  rename_with(~ gsub("CTR_SOD1", "SOD1_CTR", .x), .cols = contains("CTR_SOD1")) %>%
+  rename_with(~ gsub("CTR_TARDBP", "TARDBP_CTR", .x), .cols = contains("CTR_TARDBP"))
+  
+writexl::write_xlsx(DE_PGMC_subgroups_plasma_final,"results/DE_PGMC_subgroups_plasma.xlsx")
 
 # -> CSF
 DE_subgroups_CSF = protein_data_IDs %>%
@@ -86,6 +111,17 @@ DE_subgroups_CSF = DE_subgroups_CSF %>%
          log2FC_PGMC_CTR = mean_NPQ_PGMC - mean_NPQ_CTR) %>%
   left_join(protein_pvalue_summary_CSF)
 
+DE_subgroups_CSF_final <- DE_subgroups_CSF %>%
+  select(Target,UniProtID,SampleMatrixType,
+         contains("ALS_CTR"),contains("CTR_ALS"),
+         contains("ALS_PGMC"),contains("PGMC_ALS"),
+         contains("mimic_CTR"),contains("CTR_mimic"),
+         contains("PGMC_CTR")) %>%
+  rename_with(~ gsub("CTR_ALS", "ALS_CTR", .x), .cols = contains("CTR_ALS")) %>%
+  rename_with(~ gsub("PGMC_ALS", "ALS_PGMC", .x), .cols = contains("PGMC_ALS")) %>%
+  rename_with(~ gsub("CTR_mimic", "mimic_CTR", .x), .cols = contains("CTR_mimic"))
+writexl::write_xlsx(DE_subgroups_CSF_final,"results/DE_subgroups_CSF.xlsx")
+
 # -> CSF (PGMC subgroups)
 DE_PGMC_subgroups_CSF = protein_data_PGMC_CTR_IDs %>%
   filter(SampleMatrixType == "CSF") %>%
@@ -112,8 +148,22 @@ DE_PGMC_subgroups_CSF = DE_PGMC_subgroups_CSF %>%
   mutate(log2FC_C9orf72_CTR = mean_NPQ_C9orf72 - mean_NPQ_CTR,
          log2FC_SOD1_CTR = mean_NPQ_SOD1 - mean_NPQ_CTR,
          log2FC_TARDBP_CTR = mean_NPQ_TARDBP - mean_NPQ_CTR,
-         log2FC_C9orf72_SOD1 = mean_NPQ_C9orf72 - mean_NPQ_SOD1) %>%
+         log2FC_C9orf72_SOD1 = mean_NPQ_C9orf72 - mean_NPQ_SOD1,
+         log2FC_C9orf72_TARDBP = mean_NPQ_C9orf72 - mean_NPQ_TARDBP) %>%
   left_join(protein_pvalue_PGMC_CTR_summary_CSF)
+
+DE_PGMC_subgroups_CSF_final <- DE_PGMC_subgroups_CSF %>%
+  select(Target,UniProtID,SampleMatrixType,
+         contains("C9orf72_CTR"),contains("CTR_C9orf72"),
+         contains("TARDBP_CTR"),contains("CTR_TARDBP"),
+         contains("SOD1_CTR"),contains("CTR_SOD1"),
+         contains("C9orf72_SOD1"),contains("C9orf72_TARDBP")) %>%
+  rename_with(~ gsub("CTR_C9orf72", "C9orf72_CTR", .x), .cols = contains("CTR_C9orf72")) %>%
+  rename_with(~ gsub("CTR_TARDBP", "TARDBP_CTR", .x), .cols = contains("CTR_TARDBP")) %>%
+  rename_with(~ gsub("CTR_SOD1", "SOD1_CTR", .x), .cols = contains("CTR_SOD1")) %>%
+  rename_with(~ gsub("CTR_TARDBP", "TARDBP_CTR", .x), .cols = contains("CTR_TARDBP"))
+
+writexl::write_xlsx(DE_PGMC_subgroups_CSF_final,"results/DE_PGMC_subgroups_CSF.xlsx")
 
 # -> SERUM
 DE_subgroups_SERUM = protein_data_IDs %>%
@@ -144,6 +194,17 @@ DE_subgroups_SERUM = DE_subgroups_SERUM %>%
          log2FC_PGMC_CTR = mean_NPQ_PGMC - mean_NPQ_CTR) %>%
   left_join(protein_pvalue_summary_serum)
 
+DE_subgroups_SERUM_final <- DE_subgroups_SERUM %>%
+  select(Target,UniProtID,SampleMatrixType,
+         contains("ALS_CTR"),contains("CTR_ALS"),
+         contains("ALS_PGMC"),contains("PGMC_ALS"),
+         contains("mimic_CTR"),contains("CTR_mimic"),
+         contains("PGMC_CTR")) %>%
+  rename_with(~ gsub("CTR_ALS", "ALS_CTR", .x), .cols = contains("CTR_ALS")) %>%
+  rename_with(~ gsub("PGMC_ALS", "ALS_PGMC", .x), .cols = contains("PGMC_ALS")) %>%
+  rename_with(~ gsub("CTR_mimic", "mimic_CTR", .x), .cols = contains("CTR_mimic"))
+writexl::write_xlsx(DE_subgroups_SERUM_final,"results/DE_subgroups_SERUM.xlsx")
+
 # -> SERUM (PGMC subgroups)
 DE_PGMC_subgroups_SERUM = protein_data_PGMC_CTR_IDs %>%
   filter(SampleMatrixType == "SERUM") %>%
@@ -172,8 +233,22 @@ DE_PGMC_subgroups_SERUM = DE_PGMC_subgroups_SERUM %>%
   mutate(log2FC_C9orf72_CTR = mean_NPQ_C9orf72 - mean_NPQ_CTR,
          log2FC_SOD1_CTR = mean_NPQ_SOD1 - mean_NPQ_CTR,
          log2FC_TARDBP_CTR = mean_NPQ_TARDBP - mean_NPQ_CTR,
-         log2FC_C9orf72_SOD1 = mean_NPQ_C9orf72 - mean_NPQ_SOD1) %>%
+         log2FC_C9orf72_SOD1 = mean_NPQ_C9orf72 - mean_NPQ_SOD1,
+         log2FC_C9orf72_TARDBP = mean_NPQ_C9orf72 - mean_NPQ_TARDBP) %>%
   left_join(protein_pvalue_PGMC_CTR_summary_serum)
+
+DE_PGMC_subgroups_SERUM_final <- DE_PGMC_subgroups_SERUM %>%
+  select(Target,UniProtID,SampleMatrixType,
+         contains("C9orf72_CTR"),contains("CTR_C9orf72"),
+         contains("TARDBP_CTR"),contains("CTR_TARDBP"),
+         contains("SOD1_CTR"),contains("CTR_SOD1"),
+         contains("C9orf72_SOD1"),contains("C9orf72_TARDBP")) %>%
+  rename_with(~ gsub("CTR_C9orf72", "C9orf72_CTR", .x), .cols = contains("CTR_C9orf72")) %>%
+  rename_with(~ gsub("CTR_TARDBP", "TARDBP_CTR", .x), .cols = contains("CTR_TARDBP")) %>%
+  rename_with(~ gsub("CTR_SOD1", "SOD1_CTR", .x), .cols = contains("CTR_SOD1")) %>%
+  rename_with(~ gsub("CTR_TARDBP", "TARDBP_CTR", .x), .cols = contains("CTR_TARDBP"))
+
+writexl::write_xlsx(DE_PGMC_subgroups_SERUM_final,"results/DE_PGMC_subgroups_SERUM.xlsx")
 
 # subgroups
 # ALS vs CTR (plasma)
@@ -339,13 +414,16 @@ DE_subgroups_plasma_PGMC_CTR <- DE_subgroups_plasma %>%
   select(Target,UniProtID,log2FC_PGMC_CTR,pvalue_PGMC_CTR,padj_PGMC_CTR) %>%
   mutate(log10_pval = -log10(pvalue_PGMC_CTR),
          log10_padj = -log10(padj_PGMC_CTR),
-         DE = ifelse(padj_PGMC_CTR<0.05 & log2FC_PGMC_CTR > 0,"PGMC",
-                     ifelse(padj_PGMC_CTR<0.05 & log2FC_PGMC_CTR < 0,"CTR",
-                            "ns")))
+         DE = ifelse(padj_PGMC_CTR<0.1 & log2FC_PGMC_CTR > 0,"PGMC",
+                     ifelse(padj_PGMC_CTR<0.1 & log2FC_PGMC_CTR < 0,"CTR",
+                            "ns"))) %>%
+  mutate(DE = ifelse(DE == "ns" & Target %in% c("MAPT","NEFH","pTau-217","TAFA5",
+                                                "IL7","SOD1","HTT"),
+                     "Protein interest",DE))
 
 volcano_PGMC_CTR_plasma <- volcano_plot_PGMC_CTR(DE_subgroups_plasma_PGMC_CTR,"log2FC_PGMC_CTR",
                                                title = "PGMC vs CTR in plasma",1.3,0.05)
-pdf("plots/volcano_plots/volcano_PGMC_CTR_plasma.pdf",width = 8, height = 6)
+pdf("plots/volcano_plots/volcano_PGMC_CTR_plasma_FDR10.pdf",width = 8, height = 6)
 volcano_PGMC_CTR_plasma
 dev.off()
 
@@ -354,14 +432,17 @@ DE_subgroups_CSF_PGMC_CTR <- DE_subgroups_CSF %>%
   select(Target,UniProtID,log2FC_PGMC_CTR,pvalue_PGMC_CTR,padj_PGMC_CTR) %>%
   mutate(log10_pval = -log10(pvalue_PGMC_CTR),
          log10_padj = -log10(padj_PGMC_CTR),
-         DE = ifelse(padj_PGMC_CTR<0.05 & log2FC_PGMC_CTR > 0,"PGMC",
-                     ifelse(padj_PGMC_CTR<0.05 & log2FC_PGMC_CTR < 0,"CTR",
-                            "ns")))
+         DE = ifelse(padj_PGMC_CTR<0.1 & log2FC_PGMC_CTR > 0,"PGMC",
+                     ifelse(padj_PGMC_CTR<0.1 & log2FC_PGMC_CTR < 0,"CTR",
+                            "ns"))) %>%
+  mutate(DE = ifelse(DE == "ns" & Target %in% c("MAPT","NEFH","pTau-217","TAFA5",
+                                                "IL7","SOD1","HTT"),
+                     "Protein interest",DE))
 
 volcano_PGMC_CTR_CSF <- volcano_plot_PGMC_CTR(DE_subgroups_CSF_PGMC_CTR,"log2FC_PGMC_CTR",
                                             title = "PGMC vs CTR in CSF",1.2,0.05)
 
-pdf("plots/volcano_plots/volcano_PGMC_CTR_CSF.pdf",width = 8, height = 6)
+pdf("plots/volcano_plots/volcano_PGMC_CTR_CSF_FDR10.pdf",width = 8, height = 6)
 volcano_PGMC_CTR_CSF
 dev.off()
 
@@ -370,30 +451,36 @@ DE_subgroups_SERUM_PGMC_CTR <- DE_subgroups_SERUM %>%
   select(Target,UniProtID,log2FC_PGMC_CTR,pvalue_PGMC_CTR,padj_PGMC_CTR) %>%
   mutate(log10_pval = -log10(pvalue_PGMC_CTR),
          log10_padj = -log10(padj_PGMC_CTR),
-         DE = ifelse(padj_PGMC_CTR<0.05 & log2FC_PGMC_CTR > 0,"PGMC",
-                     ifelse(padj_PGMC_CTR<0.05 & log2FC_PGMC_CTR < 0,"CTR",
-                            "ns")))
+         DE = ifelse(padj_PGMC_CTR<0.1 & log2FC_PGMC_CTR > 0,"PGMC",
+                     ifelse(padj_PGMC_CTR<0.1 & log2FC_PGMC_CTR < 0,"CTR",
+                            "ns"))) %>%
+  mutate(DE = ifelse(DE == "ns" & Target %in% c("MAPT","NEFH","pTau-217","TAFA5",
+                                                "IL7","SOD1","HTT"),
+                     "Protein interest",DE))
 
 volcano_PGMC_CTR_SERUM <- volcano_plot_PGMC_CTR(DE_subgroups_SERUM_PGMC_CTR,"log2FC_PGMC_CTR",
                                               title = "PGMC vs CTR in SERUM",0.8,0.05)
 
-pdf("plots/volcano_plots/volcano_PGMC_CTR_serum.pdf",width = 8, height = 6)
+pdf("plots/volcano_plots/volcano_PGMC_CTR_serum_FDR10.pdf",width = 8, height = 6)
 volcano_PGMC_CTR_SERUM
 dev.off()
 
 volcano_plot_PGMC_CTR <- function(dataset,log2fc,title,add_x,add_y){
   ggplot(dataset,aes_string(log2fc,"log10_padj")) + 
     geom_point(aes(color=DE, size = log10_padj)) +
-    geom_text_repel(data = dataset %>% filter(DE!="ns"),
+    geom_text_repel(data = dataset %>% filter(DE!="ns" | 
+                                                Target %in% c("MAPT","NEFH","pTau-217","TAFA5",
+                                                              "IL7","SOD1","HTT")),
                     aes(label = Target),max.overlaps = 40,
                     box.padding = 0.4,
                     size = 5) + 
-    geom_hline(yintercept = -log10(0.05),linetype = "dashed",col = "darkgrey") +
+    geom_hline(yintercept = -log10(0.1),linetype = "dashed",col = "darkgrey") +
     geom_vline(xintercept = 0,linetype = "dashed",col = "darkgrey") +
     scale_color_manual(values  = c('CTR' = "#C25F3D", 
                                    'ns' = 'lightgrey', 
+                                   'Protein interest' = '#3C3C3C',
                                    'PGMC'= "#3da0c2")) +
-    annotate(geom="text", x=add_x, y= (-log10(0.05)) + add_y, label="FDR = 5%",size = 5,
+    annotate(geom="text", x=add_x, y= (-log10(0.1)) + add_y, label="FDR = 10%",size = 5,
              col = "darkgrey") +
     scale_size_continuous(range=c(2, 7)) +
     theme_minimal() + 
