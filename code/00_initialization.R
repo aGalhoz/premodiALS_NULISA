@@ -16,6 +16,7 @@ library(ggpubr)
 library(skimr)
 library(ggExtra)
 library(RColorBrewer)
+library(gridExtra)
 
 ### Directories
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
@@ -27,6 +28,9 @@ dir.create(file.path(getwd(),'plots'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/boxplots_plasma'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/boxplots_CSF'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/boxplots_SERUM'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/PCA_plots'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/volcano_plots'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/signed_plots'), showWarnings = FALSE)
 
 ### Collect data
 # new documentation from 27-08-2025
@@ -131,5 +135,9 @@ Sex_age_all_participants = do.call("rbind",list(participants_PGMC,
 # Questionnaire info with ALSFRS scores
 Questionnaire <- read_delim("data input/export-2025-09-04-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_KSSGCH_MRI_NIUSASSK (ALSFRS-r)/QuestionnaireG.csv", 
                              delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+# ECAS info
+ECAS = read_delim("data input/export-2025-11-07-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK/Ecas.csv", 
+                   delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
 

@@ -165,6 +165,29 @@ protein_data_IDs <- protein_data %>%
   select(SampleName, SampleMatrixType, Target, UniProtID, ProteinName, NPQ) %>%
   left_join(samples_ID_type %>% rename(SampleName = `Sample ID`), by = "SampleName")
 
+# get count table of APOE
+table_APOE = protein_data_IDs %>%
+  left_join(samples_PGMC_CTR_ID_type %>% rename(subtype = type,
+                                                SampleName = `Sample ID`)) %>%
+  mutate(
+    subtype = ifelse(subtype == "CTR" | is.na(subtype), "No subtype",
+                     ifelse(subtype %in% c("FUS","UBQLN2","FIG4","other"),"others",subtype))) %>%
+  filter(Target == "APOE4") %>%
+  mutate(APOE_status =  ifelse(NPQ > 10, "Carrier",ifelse(NPQ <= 10, "Non-carrier",NA)))
+
+carrier_table <- table_APOE %>%
+  group_by(SampleMatrixType, type, subtype, APOE_status) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  tidyr::pivot_wider(
+    names_from = APOE_status,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  mutate(
+    Total = Carrier + `Non-carrier`
+  )
+writexl::write_xlsx(carrier_table,"results/APOE4_carriers.xlsx")
+
 ###############################################
 ### 4. Sample Counts Across Fluids
 ###############################################

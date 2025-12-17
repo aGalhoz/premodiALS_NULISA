@@ -177,4 +177,26 @@ skim(ALSFRS_NULISA_V0 %>% filter(type == "PGMC") %>% pull(ALSFRS_1))
 skim(ALSFRS_NULISA_V0 %>% filter(type == "ALS") %>% pull(ALSFRS_1))
 skim(ALSFRS_NULISA_V0 %>% filter(type == "mimic") %>% pull(ALSFRS_1))
 
+## ECAS info
+ECAS_table = clinical_table_slim %>%
+  select(PatientID,ParticipantCode,type,age,sex) %>%
+  left_join(ECAS %>% select(PatientID,EcasExists,Erfassungsdatum,contains("ECASALS"),
+                            EcasTotalBehavior,EcasTotScore)) %>%
+  mutate(EcasExists = ifelse(EcasExists == 1, "yes", ifelse(EcasExists == 2,"no",NA)),
+         EcasALSSpecAllQs = ifelse(EcasALSSpecAllQs == 1, "yes", ifelse(EcasALSSpecAllQs == 2,"no",NA)),
+         EcasALSnonSpecAllQs = ifelse(EcasALSnonSpecAllQs == 1, "yes", ifelse(EcasALSnonSpecAllQs == 2,"no",NA))) %>%
+  group_by(PatientID,ParticipantCode,type,age,sex) %>%
+  mutate(obs = row_number()) %>%
+  pivot_wider(
+    names_from = obs,
+    values_from = c(contains("Ecas"), Erfassungsdatum),
+    names_sep = "_"
+  ) %>%
+  select(where(~ !all(is.na(.)))) %>%
+  ungroup() %>%
+  select(PatientID,ParticipantCode,type,age,sex,contains("Ecas"))
+
+writexl::write_xlsx(ECAS_table,"results/ECAS_overview.xlsx")
+
+
 
