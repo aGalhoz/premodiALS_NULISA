@@ -20,55 +20,89 @@ prepare_dataset <- function(protein_data, sample_map) {
     )
 }
 
-## 2. Adjust protein data based on age, sex and center
-adjust_dataset <- function(df, covariates = c("age", "sex", "center")) {
-
-df %>%
-  group_by(Target, SampleMatrixType) %>%
-  mutate(
-    NPQ_adj = local({
-      
-      sub_df <- cur_data()
-      ok <- complete.cases(sub_df[, c("NPQ", covariates)])
-      
-      # default output
-      res <- rep(NA_real_, nrow(sub_df))
-      
-      if (sum(ok) >= 3) {
-        f <- as.formula(
-          paste("NPQ ~", paste(covariates, collapse = " + "))
-        )
+## 2. Remove effect of age, sex and center in data (for PCA)
+remove_effect_covariates <- function(
+    df,
+    response = "NPQ",
+    feature = "Target",
+    sample = "SampleID",
+    keep = "SampleMatrixType",
+    remove = c("age", "sex", "center")
+) {
+  
+  df %>%
+    group_by(.data[[feature]]) %>%
+    mutate(
+      NPQ_adj = local({
         
-        fit <- try(
-          lm(f, data = sub_df[ok, , drop = FALSE]),
-          silent = TRUE
-        )
+        sub_df <- cur_data()
+        vars <- c(response, keep, remove)
+        ok <- complete.cases(sub_df[, vars])
         
-        if (!inherits(fit, "try-error")) {
-          res[ok] <- residuals(fit)
+        out <- rep(NA_real_, nrow(sub_df))
+        
+        if (sum(ok) >= length(vars) + 1) {
+          
+          f <- as.formula(
+            paste(
+              response, "~",
+              keep, "+",
+              paste(remove, collapse = " + ")
+            )
+          )
+          
+          fit <- lm(f, data = sub_df[ok, , drop = FALSE])
+          
+          X <- model.matrix(fit)
+          beta <- coef(fit)
+          
+          # identify nuisance columns
+          drop_cols <- colnames(X) %in%
+            unlist(lapply(remove, function(v)
+              grep(paste0("^", v), colnames(X), value = TRUE)))
+          
+          out[ok] <- sub_df[[response]][ok] -
+            as.numeric(X[, drop_cols, drop = FALSE] %*% beta[drop_cols])
         }
-      }
-      
-      res
-    })
-  ) %>%
-  ungroup()
+        
+        out
+      })
+    ) %>%
+    ungroup()
 }
 
 ## 3. Run ANOVA + pairwise tests for one fluid (CSF/SERUM/PLASMA)
-run_stats_for_fluid <- function(df, fluid, value_col = "NPQ", label = "UNADJ") {
+format_p <- function(p, digits = 3) {
+  ifelse(
+    p < 10^(-digits),
+    paste0("<", formatC(10^(-digits), format = "f", digits = digits)),
+    formatC(p, format = "f", digits = digits)
+  )
+}
+
+run_stats_for_fluid <- function(df, fluid, value_col = "NPQ", 
+                                adjust = FALSE,
+                                covariates = c("age", "sex","center")) {
   
   df_f <- df %>%
     filter(SampleMatrixType == fluid) %>%
     filter(!is.na(.data[[value_col]]))
   
+  # formula for raw data or adjusted data 
+  fmla <- if(adjust) {
+    as.formula(paste(value_col, "~ type +", paste(covariates, collapse = " + ")))
+  } else {
+    as.formula(paste(value_col, "~ type"))
+  }
+  
   # ANOVA
   anova_res <- df_f %>%
     group_by(Target) %>%
-    rstatix::anova_test(as.formula(paste(value_col, "~ type")),
-                        effect.size = "partial_eta_squared") %>%
+    rstatix::anova_test(fmla, effect.size = "partial_eta_squared") %>%
+    ungroup() %>%
     as_tibble() %>%
-    mutate(Fluid = fluid, Adjustment = label)
+    mutate(Fluid = fluid, Adjustment = ifelse(adjust, "ADJ", "UNADJ")) %>% 
+    filter(Effect == "type")
   
   
   if(nrow(anova_res) == 0) {
@@ -77,23 +111,71 @@ run_stats_for_fluid <- function(df, fluid, value_col = "NPQ", label = "UNADJ") {
   }
   
   # Welch t-tests
-  pairwise_raw <- df_f %>%
-    #filter(type %in% c("ALS","CTR","PGMC","mimic","C9orf72","SOD1","TARDBP","others")) %>%
-    group_by(Target) %>%
-    rstatix::t_test(as.formula(paste(value_col, "~ type")), var.equal = FALSE) %>%
-    ungroup()
-  
-  pairwise_res <- pairwise_raw %>%
-    group_by(group1, group2) %>%    
-    adjust_pvalue(method = "BH") %>% 
-    ungroup() %>%
-    add_significance() %>%
-    mutate(Fluid = fluid, Adjustment = label)
+  if(adjust){
+    # Covariate-adjusted t-tests using linear model residuals
+    pairwise_res <- df_f %>%
+      group_by(Target) %>%
+      do({
+        sub_df <- .
+        # Fit linear model with type + covariates
+        fit <- lm(as.formula(paste(value_col, "~ type +", paste(covariates, collapse = " + "))), data = sub_df)
+        # Compute residuals + group effects
+        emmeans_fit <- try(emmeans::emmeans(fit, specs = "type"), silent = TRUE)
+        if(inherits(emmeans_fit, "try-error")) return(tibble())
+        pw <- emmeans::contrast(emmeans_fit, method = "pairwise") %>% as_tibble() %>%
+          tidyr::separate(contrast, into = c("group1", "group2"), sep = " - ") %>%
+          rename(p = p.value) %>%
+          mutate(Target = unique(sub_df$Target))
+        pw
+      }) %>%
+      ungroup() %>%
+      group_by(group1, group2) %>%
+      adjust_pvalue(method = "BH") %>%
+      ungroup() %>%
+      add_significance() %>%
+      mutate(Fluid = fluid, Adjustment = "ADJ")
+  } else {
+    # Regular Welch t-tests without adjustment
+    pairwise_res <- df_f %>%
+      group_by(Target) %>%
+      rstatix::t_test(as.formula(paste(value_col, "~ type")), var.equal = FALSE) %>%
+      ungroup() %>%
+      group_by(group1, group2) %>%
+      adjust_pvalue(method = "BH") %>%
+      ungroup() %>%
+      add_significance() %>%
+      mutate(Fluid = fluid, Adjustment = "UNADJ")
+  }
   
   if(nrow(pairwise_res) == 0) {
     warning("No pairwise results for fluid: ", fluid)
     pairwise_res <- NULL
   }
+  
+  if(adjust){
+    df_f <- df_f %>%
+      group_by(Target) %>%
+      mutate(NPQ_adj = local({
+        sub_df <- cur_data()
+        ok <- complete.cases(sub_df[, c(value_col, covariates)])
+        res <- rep(NA_real_, nrow(sub_df))
+        if(sum(ok) >= length(covariates) + 1){
+          f <- as.formula(paste(value_col, "~", paste(covariates, collapse = " + ")))
+          fit <- lm(f, data = sub_df[ok, , drop = FALSE])
+          X <- model.matrix(fit)
+          beta <- coef(fit)
+          drop_cols <- colnames(X) %in% unlist(lapply(covariates, function(v) grep(paste0("^", v), colnames(X), value = TRUE)))
+          res[ok] <- sub_df[[value_col]][ok] - as.numeric(X[, drop_cols, drop = FALSE] %*% beta[drop_cols])
+        }
+        res
+      })) %>%
+      ungroup()
+  }
+  
+  pairwise_res <- pairwise_res %>%
+    mutate(
+      p_label = format_p(p, digits = 3)
+    )
   
   list(
     anova = anova_res,
@@ -170,6 +252,13 @@ get_lod <- function(protein, fluid, td) {
   if(length(lod_val) == 0) return(NA) else return(lod_val)
 }
 
+get_project_lod <- function(protein, fluid, td) {
+  lod_val <- td %>%
+    filter(Target == protein, SampleMatrixType == fluid) %>%
+    pull(ProjectLOD)
+  if(length(lod_val) == 0) return(NA) else return(lod_val)
+}
+
 ## 6. Get pairwise p-values filtered by cutoff for plotting
 get_pairwise_sig <- function(stats_list, fluid, proteins, df_top, p_cutoff = 0.1,adjusted = FALSE) {
   
@@ -233,11 +322,23 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15,adjus
   # Pairwise p-values
   pairwise_res <- get_pairwise_sig(stats_list, fluid, top_proteins, df_top,adjusted = adjusted)
   
-  # LOD per protein
+  # # LOD per protein (original LOD-plate)
+  # lod_df <- df_top %>%
+  #   group_by(Target) %>%
+  #   summarise(
+  #     LOD_val = get_lod(Target[1], fluid, td),
+  #     max_val = max(NPQ, na.rm = TRUE)
+  #   ) %>%
+  #   mutate(y_position_text = LOD_val * 1.02) %>%
+  #   ungroup()
+  # 
+  
+  # LOD per protein (Project-LOD)
   lod_df <- df_top %>%
+    left_join(td) %>%
     group_by(Target) %>%
     summarise(
-      LOD_val = get_lod(Target[1], fluid, td),
+      LOD_val = ProjectLOD %>% unique(),
       max_val = max(NPQ, na.rm = TRUE)
     ) %>%
     mutate(y_position_text = LOD_val * 1.02) %>%
@@ -348,29 +449,28 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15,adjus
     ) }
   
   
-  # # Add LOD lines and labels
-  # p <- p +
-  #   geom_hline(
-  #     data = lod_df %>% tidyr::unnest(LOD_val),
-  #     aes(yintercept = LOD_val),
-  #     linetype = "dashed",
-  #     color = "gray55"
-  #   ) 
-  # +
-  #   geom_text(
-  #     data = lod_df %>% mutate(label = paste("LOD =", paste(signif(LOD_val, 3), collapse = ", "))),
-  #     aes(x = 4.2, y = y_position_text, label = label),
-  #     color = "gray55",
-  #     size = 4,
-  #     hjust = 0,
-  #     inherit.aes = FALSE
-  #   )
+  # Add LOD lines and labels
+  p <- p +
+    geom_hline(
+      data = lod_df %>% tidyr::unnest(LOD_val),
+      aes(yintercept = LOD_val),
+      linetype = "dashed",
+      color = "gray55"
+    ) +
+    geom_text(
+      data = lod_df  %>% tidyr::unnest(LOD_val) %>% mutate(label = paste("LOD =", signif(LOD_val, 3))),
+      aes(x = 2, y = y_position_text, label = label),
+      color = "gray55",
+      size = 4,
+      hjust = 0,
+      inherit.aes = FALSE
+    )
     
   # Add pairwise p-values only if available
   if (!is.null(pairwise_res) && nrow(pairwise_res) > 0) {
     p <- p + stat_pvalue_manual(
       pairwise_res,
-      label = "p",
+      label = "p_label",
       size = 5,
       bracket.nudge.y = 0.02 * ifelse(adjusted,
                                       diff(range(df_top$NPQ_adj, na.rm = TRUE)),
@@ -403,8 +503,18 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjust
       TRUE ~ factor(type, levels = c("CTR", "PGMC", "ALS", "mimic"))
     ))
   
-  # LOD for this protein
-  LOD_val <- get_lod(protein, fluid, td) %>% unique()
+  # # LOD for this protein (original LOD-plate)
+  # LOD_val <- get_lod(protein, fluid, td) %>% unique()
+  
+  # LOD for this protein (Project-LOD)
+  LOD_val = get_project_lod(protein, fluid, td) %>% unique()
+  lod_df <- df_prot %>%
+    summarise(
+      LOD_val = get_project_lod(protein, fluid, td),
+      max_val = ifelse(adjusted, max(NPQ_adj, na.rm = TRUE),max(NPQ, na.rm = TRUE))
+    ) %>%
+    mutate(y_position_text = LOD_val * 1.02) %>%
+    ungroup()
   
   if(adjusted){
     max_val <- max(df_prot$NPQ_adj, na.rm = TRUE)
@@ -440,7 +550,8 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjust
         x = "Group",
         y = "adjusted NPQ",
         title = paste(protein),
-        subtitle = paste("ANOVA p =", signif(anova_p, 3))) +
+        subtitle = paste("ANOVA p =", signif(anova_p, 3),
+                         "; LOD =", signif(LOD_val,3))) +
       #                    ,
       #                    "; LOD1 =", signif(LOD_val[1],3), 
       #                    "; LOD2 =", signif(LOD_val[2],3))
@@ -495,7 +606,8 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjust
       x = "Group",
       y = "NPQ",
       title = paste(protein),
-      subtitle = paste("ANOVA p =", signif(anova_p, 3))) +
+      subtitle = paste("ANOVA p =", signif(anova_p, 3),
+                       "; LOD =", signif(LOD_val,3))) +
     #                    ,
     #                    "; LOD1 =", signif(LOD_val[1],3), 
     #                    "; LOD2 =", signif(LOD_val[2],3))
@@ -514,17 +626,15 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjust
       legend.title = element_text(size = 16, face = "bold"),
       legend.text = element_text(size = 14),
       legend.position = "none"
-    ) }
-  # +
-  #   geom_hline(yintercept = LOD_val, linetype = "dashed", color = "gray55")
-  # +
-  #   annotate("text",
-  #            x = 3.5,
-  #            y = LOD_val * 1.02,
-  #            label = paste0("LOD = ", signif(LOD_val, 3)),
-  #            color = "gray55",
-  #            hjust = 0,
-  #            size = 5)
+    ) }  + 
+    geom_hline(yintercept = LOD_val, linetype = "dashed", color = "gray55") + 
+    annotate("text",
+             x = 2,
+             y = LOD_val * 1.02,
+             label = paste0("LOD = ", signif(LOD_val, 3)),
+             color = "gray55",
+             hjust = 0,
+             size = 5)
   
   # p <- p +
   #   annotation_custom(
@@ -549,7 +659,7 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjust
   if (nrow(pairwise_res) > 0) {
     p <- p + stat_pvalue_manual(
       pairwise_res,
-      label = "p",
+      label = "p_label",
       bracket.nudge.y = 0.05 * max_val,
       size = 6,
       # xmin = "group1",
@@ -559,24 +669,43 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjust
     )
   }
   
+  # Add LOD lines and labels
+  p <- p +
+    geom_hline(
+      data = lod_df %>% tidyr::unnest(LOD_val),
+      aes(yintercept = LOD_val),
+      linetype = "dashed",
+      color = "gray55"
+    ) +
+    geom_text(
+      data = lod_df %>% mutate(label = paste("LOD =", paste(signif(unique(LOD_val), 3)))),
+      aes(x = 2, y = y_position_text, label = label),
+      color = "gray55",
+      size = 4,
+      hjust = 0,
+      inherit.aes = FALSE
+    )
+  
+  
   p = p + scale_y_continuous(expand = expansion(mult = c(0.01, 0.05)))
   
   return(p)
 }
 
 ## 9. Full pipeline for one dataset (all samples OR PGMC subset)
-run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL") {
+run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL",
+                              covariates = c("age","sex","center")) {
   
   message("Preparing dataset...")
   df <- prepare_dataset(protein_data, sample_map)
-  df_adj <- adjust_dataset(df)
   
   fluids <- c("CSF", "SERUM", "PLASMA")
   results <- list()
   
   for (fluid in fluids) {
     message("Running stats for ", fluid, " ...")
-    stats <- run_stats_for_fluid(df, fluid,"NPQ","UNADJ")
+    
+    stats <- run_stats_for_fluid(df, fluid,value_col = "NPQ", adjust = FALSE)
     pvals <- extract_pvalues(stats)
     
     # Save p-values
@@ -584,8 +713,10 @@ run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL") {
                paste0("results/", prefix, "_pvalues_", fluid, ".xlsx"))
     
     # Adjusted results
-    stats_adj <- run_stats_for_fluid(df_adj,fluid,"NPQ_adj","ADJ")
+    df_fluid <- df %>% filter(SampleMatrixType == fluid)
+    stats_adj <- run_stats_for_fluid(df_fluid,fluid,"NPQ",adjust = TRUE, covariates = covariates)
     pvals_adj <- extract_pvalues(stats_adj)
+    df_fluid_adj = stats_adj$data
   
     # Save p-values
     write_xlsx(pvals_adj,
@@ -598,16 +729,22 @@ run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL") {
     
     # Top 15 plot (violin)
     p_top15 <- plot_top_proteins_violin(df, stats, td, fluid)
-    ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_noLOD", fluid, ".pdf"),
+    #ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_noLOD", fluid, ".pdf"),
+    #       p_top15, width = 15, height = 18)
+    ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_LOD_", fluid, ".pdf"),
            p_top15, width = 15, height = 18)
     
-    p_top15_adj <- plot_top_proteins_violin(df_adj, stats_adj, td, fluid,adjusted = TRUE)
-    ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_noLOD_", fluid, "_adj.pdf"),
+    p_top15_adj <- plot_top_proteins_violin(df_fluid_adj, stats_adj, td, fluid,adjusted = TRUE)
+    # ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_noLOD_", fluid, "_adj.pdf"),
+    #        p_top15_adj, width = 15, height = 18)
+    ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_LOD_", fluid, "_adj.pdf"),
            p_top15_adj, width = 15, height = 18)
     
     # All proteins (multi-page PDF)
     targets <- unique(df$Target)
-    pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_noLOD", fluid, "_others.pdf"),
+    # pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_noLOD", fluid, "_others.pdf"),
+    #     width = 6, height = 5.7)
+    pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_LOD_", fluid, "_others.pdf"),
         width = 6, height = 5.7)
     for (t in targets) {
       p <- plot_single_protein_violin(df, stats, td, fluid, t)
@@ -615,11 +752,13 @@ run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL") {
     }
     dev.off()
     
-    targets <- unique(df_adj$Target)
-    pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_noLOD", fluid, "_others_adj.pdf"),
+    targets <- unique(df_fluid_adj$Target)
+    # pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_noLOD", fluid, "_others_adj.pdf"),
+    #     width = 6, height = 5.7)
+    pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_LOD_", fluid, "_others_adj.pdf"),
         width = 6, height = 5.7)
     for (t in targets) {
-      p <- plot_single_protein_violin(df_adj, stats_adj, td, fluid, t,adjusted = TRUE)
+      p <- plot_single_protein_violin(df_fluid_adj, stats_adj, td, fluid, t,adjusted = TRUE)
       print(p)
     }
     dev.off()
@@ -632,7 +771,7 @@ run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL") {
 run_pca <- function(df, matrix_type) {
   df_matrix <- df %>%
     filter(SampleMatrixType == matrix_type) %>%
-    select(SampleName, Target, NPQ, type, subtype, age, sex, center)
+    select(SampleName, ParticipantCode, Target, NPQ, type, subtype, age, sex, center)
   
   # Reshape wide
   df_wide <- df_matrix %>%
@@ -642,8 +781,8 @@ run_pca <- function(df, matrix_type) {
       values_fill = 0
     )
   
-  meta <- df_wide %>% select(SampleName, type, subtype,age, sex, center)
-  X <- df_wide %>% select(-SampleName, -type, -subtype,-center,-age,-sex)
+  meta <- df_wide %>% select(SampleName, ParticipantCode,type, subtype,age, sex, center)
+  X <- df_wide %>% select(-SampleName, -ParticipantCode,-type, -subtype,-center,-age,-sex)
   
   X <- X %>% select(where(~ {
     s <- sd(.x, na.rm = TRUE)
@@ -662,7 +801,7 @@ run_pca <- function(df, matrix_type) {
 run_pca_adjusted <- function(df, matrix_type) {
   df_matrix <- df %>%
     filter(SampleMatrixType == matrix_type) %>%
-    select(SampleName, Target, NPQ_adj, type, subtype,age,sex,center)
+    select(SampleName,ParticipantCode, Target, NPQ_adj, type, subtype,age,sex,center)
   
   # Reshape wide
   df_wide <- df_matrix %>%
@@ -672,8 +811,8 @@ run_pca_adjusted <- function(df, matrix_type) {
       values_fill = 0
     )
   
-  meta <- df_wide %>% select(SampleName, type, subtype,center,age, sex, center)
-  X <- df_wide %>% select(-SampleName, -type, -subtype,-center,-age, -sex)
+  meta <- df_wide %>% select(SampleName,ParticipantCode, type, subtype,center,age, sex, center)
+  X <- df_wide %>% select(-SampleName, -ParticipantCode,-type, -subtype,-center,-age, -sex)
   
   X <- X %>% select(where(~ {
     s <- sd(.x, na.rm = TRUE)
@@ -690,7 +829,7 @@ run_pca_adjusted <- function(df, matrix_type) {
 }
 
 # 11: Plot function for PCA
-plot_pca <- function(pca_res, title, type_center = "type") {
+plot_pca <- function(pca_res, title, type_center = "type",label=FALSE) {
   pca <- pca_res$pca
   scores <- pca_res$scores %>%
     mutate(
@@ -701,7 +840,7 @@ plot_pca <- function(pca_res, title, type_center = "type") {
     )
   
   if(type_center == "type"){
-  ggplot(scores, aes(x = PC1, y = PC2, color = type, shape = subtype)) +
+  p <- ggplot(scores, aes(x = PC1, y = PC2, color = type, shape = subtype)) +
     geom_point(size = 5, alpha = 0.8) +
     scale_color_manual(values = c(
       'CTR'    = '#6F8EB2',
@@ -727,8 +866,12 @@ plot_pca <- function(pca_res, title, type_center = "type") {
       legend.title = element_text(size = 17),
       legend.text = element_text(size = 16)
     )
+  if (label) {
+    p <- p + geom_text_repel(aes(label = ParticipantCode), size = 4)
+  }
+  p
   } else{
-    ggplot(scores, aes(x = PC1, y = PC2, color = center)) +
+   p <- ggplot(scores, aes(x = PC1, y = PC2, color = center)) +
       geom_point(size = 5, alpha = 0.8) +
       theme_minimal(base_size = 16) +
       labs(
@@ -744,6 +887,10 @@ plot_pca <- function(pca_res, title, type_center = "type") {
         legend.title = element_text(size = 17),
         legend.text = element_text(size = 16)
       )
+   if (label) {
+     p <- p + geom_text_repel(aes(label = ParticipantCode), size = 4)
+   }
+   p
     }
 }
 
@@ -764,11 +911,11 @@ run_pca_all <- function(df) {
   
   # Metadata
   meta <- df_wide %>%
-    dplyr::select(SampleName, SampleMatrixType)
+    dplyr::select(SampleName, SampleMatrixType,ParticipantCode)
   
   # Numeric matrix for PCA
   X <- df_wide %>%
-    dplyr::select(-SampleName, -SampleMatrixType)
+    dplyr::select(-SampleName, -SampleMatrixType,-ParticipantCode)
   
   # Force numeric (some columns may still be character/factor)
   X <- X %>% mutate(across(everything(), ~ suppressWarnings(as.numeric(.x))))
@@ -817,11 +964,11 @@ run_pca_all_adjusted <- function(df) {
   
   # Metadata
   meta <- df_wide %>%
-    dplyr::select(SampleName, SampleMatrixType)
+    dplyr::select(SampleName, SampleMatrixType,ParticipantCode)
   
   # Numeric matrix for PCA
   X <- df_wide %>%
-    dplyr::select(-SampleName, -SampleMatrixType)
+    dplyr::select(-SampleName, -SampleMatrixType,-ParticipantCode)
   
   # Force numeric (some columns may still be character/factor)
   X <- X %>% mutate(across(everything(), ~ suppressWarnings(as.numeric(.x))))
@@ -859,10 +1006,10 @@ my_colors_all <- c(
   'SERUM'  = '#7570B3'
 )
 
-plot_pca_all = function(pca_res) {
+plot_pca_all = function(pca_res,label = FALSE) {
   pca <- pca_res$pca
   scores <- pca_res$scores
-  ggplot(scores, aes(x = PC1, y = PC2, color = SampleMatrixType)) +
+  p <- ggplot(scores, aes(x = PC1, y = PC2, color = SampleMatrixType)) +
     geom_point(size = 5, alpha = 0.8) +
     scale_color_manual(values = my_colors_all) +
     theme_minimal(base_size = 16) +
@@ -880,6 +1027,10 @@ plot_pca_all = function(pca_res) {
       legend.title = element_text(size = 17),
       legend.text = element_text(size = 16)
     )
+  if (label) {
+    p <- p + geom_text_repel(aes(label = ParticipantCode), size = 4)
+  }
+  p
 }
 
 ###############################################################################
@@ -901,7 +1052,8 @@ results_ALL <- run_full_pipeline(
            TRUE                 ~ NA_character_
          )) %>%
     left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)),
-  td              = td,
+  td              = td %>% left_join(target_detectability_extra %>% select(Target,ProjectLOD)) %>%
+    select(SampleMatrixType,Target,TargetLOD_NPQ,ProjectLOD) %>% distinct(),
   prefix          = "ALLsamples"
 )
 
@@ -922,7 +1074,8 @@ results_PGMC <- run_full_pipeline(
     #filter(!type %in% c("FUS","UBQLN2","FIG4","other")),
     mutate(type = ifelse(type %in% c("FUS","UBQLN2","FIG4","other"),"others",type)) %>%
     left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)),
-  td           = td,
+  td           = td %>% left_join(target_detectability_extra %>% select(Target,ProjectLOD)) %>%
+    select(SampleMatrixType,Target,TargetLOD_NPQ,ProjectLOD) %>% distinct(),
   prefix       = "PGMCvsCTR"
 )
 
@@ -977,6 +1130,19 @@ pdf("plots/PCA_plots/PCA_CSF_subtype.pdf", width = 8, height = 6.5)
 plots_subtype[[which(names(pca_results_subtype)=="CSF")]]
 dev.off()
 
+plots_subtype_label <- lapply(names(pca_results_subtype), 
+                        function(m) plot_pca(pca_results_subtype[[m]], m,label = TRUE))
+
+pdf("plots/PCA_plots/PCA_SERUM_subtype_label.pdf", width = 8, height = 6.5) 
+plots_subtype_label[[which(names(pca_results_subtype)=="SERUM")]] 
+dev.off()
+pdf("plots/PCA_plots/PCA_PLASMA_subtype_label.pdf", width = 8, height = 6.5)
+plots_subtype_label[[which(names(pca_results_subtype)=="PLASMA")]]
+dev.off()
+pdf("plots/PCA_plots/PCA_CSF_subtype_label.pdf", width = 8, height = 6.5)
+plots_subtype_label[[which(names(pca_results_subtype)=="CSF")]]
+dev.off()
+
 plots_center <- lapply(names(pca_results_subtype), 
                         function(m) plot_pca(pca_results_subtype[[m]], m,type_center = "center"))
 
@@ -990,8 +1156,21 @@ pdf("plots/PCA_plots/PCA_CSF_center.pdf", width = 8, height = 6.5)
 plots_center[[which(names(pca_results_subtype)=="CSF")]]
 dev.off()
 
-# data adjusted for age, sex and center
-pca_results_subtype_adj <- lapply(matrices, function(m) run_pca_adjusted(adjust_dataset(protein_data_clean), m))
+plots_center_label <- lapply(names(pca_results_subtype), 
+                       function(m) plot_pca(pca_results_subtype[[m]], m,
+                                            type_center = "center",label = TRUE))
+
+pdf("plots/PCA_plots/PCA_SERUM_center_label.pdf", width = 8, height = 6.5) 
+plots_center_label[[which(names(pca_results_subtype)=="SERUM")]] 
+dev.off()
+pdf("plots/PCA_plots/PCA_PLASMA_center_label.pdf", width = 8, height = 6.5)
+plots_center_label[[which(names(pca_results_subtype)=="PLASMA")]]
+dev.off()
+pdf("plots/PCA_plots/PCA_CSF_center_label.pdf", width = 8, height = 6.5)
+plots_center_label[[which(names(pca_results_subtype)=="CSF")]]
+dev.off()
+
+pca_results_subtype_adj <- lapply(matrices, function(m) run_pca_adjusted(remove_effect_covariates(protein_data_clean), m))
 names(pca_results_subtype_adj) <- matrices
 
 plots_subtype_adj <- lapply(names(pca_results_subtype_adj), 
@@ -1007,6 +1186,20 @@ pdf("plots/PCA_plots/PCA_CSF_subtype_adjusted.pdf", width = 8, height = 6.5)
 plots_subtype_adj[[which(names(pca_results_subtype_adj)=="CSF")]]
 dev.off()
 
+plots_subtype_adj_label <- lapply(names(pca_results_subtype_adj), 
+                            function(m) plot_pca(pca_results_subtype_adj[[m]], m,
+                                                 label = TRUE))
+
+pdf("plots/PCA_plots/PCA_SERUM_subtype_adjusted_label.pdf", width = 8, height = 6.5) 
+plots_subtype_adj_label[[which(names(pca_results_subtype_adj)=="SERUM")]] 
+dev.off()
+pdf("plots/PCA_plots/PCA_PLASMA_subtype_adjusted_label.pdf", width = 8, height = 6.5)
+plots_subtype_adj_label[[which(names(pca_results_subtype_adj)=="PLASMA")]]
+dev.off()
+pdf("plots/PCA_plots/PCA_CSF_subtype_adjusted_label.pdf", width = 8, height = 6.5)
+plots_subtype_adj_label[[which(names(pca_results_subtype_adj)=="CSF")]]
+dev.off()
+
 plots_center_adj <- lapply(names(pca_results_subtype_adj), 
                        function(m) plot_pca(pca_results_subtype_adj[[m]], m,type_center = "center"))
 
@@ -1018,6 +1211,20 @@ plots_center_adj[[which(names(pca_results_subtype_adj)=="PLASMA")]]
 dev.off()
 pdf("plots/PCA_plots/PCA_CSF_center_adjusted.pdf", width = 8, height = 6.5)
 plots_center_adj[[which(names(pca_results_subtype_adj)=="CSF")]]
+dev.off()
+
+plots_center_adj_label <- lapply(names(pca_results_subtype_adj), 
+                           function(m) plot_pca(pca_results_subtype_adj[[m]], m,
+                                                type_center = "center",label = TRUE))
+
+pdf("plots/PCA_plots/PCA_SERUM_center_adjusted_label.pdf", width = 8, height = 6.5) 
+plots_center_adj_label[[which(names(pca_results_subtype_adj)=="SERUM")]] 
+dev.off()
+pdf("plots/PCA_plots/PCA_PLASMA_center_adjusted_label.pdf", width = 8, height = 6.5)
+plots_center_adj_label[[which(names(pca_results_subtype_adj)=="PLASMA")]]
+dev.off()
+pdf("plots/PCA_plots/PCA_CSF_center_adjusted_label.pdf", width = 8, height = 6.5)
+plots_center_adj_label[[which(names(pca_results_subtype_adj)=="CSF")]]
 dev.off()
 
 
@@ -1035,20 +1242,30 @@ protein_data_PCA_all <- protein_data_IDs %>%
       TRUE                 ~ NA_character_
     )) %>%
   filter(SampleMatrixType %in% c("CSF","SERUM","PLASMA")) %>%
-  select(SampleName, Target, NPQ, SampleMatrixType,sex,age,center)
+  select(SampleName, ParticipantCode,Target, NPQ, SampleMatrixType,sex,age,center)
+
+protein_data_PCA_all = protein_data_PCA_all[protein_data_PCA_all$ParticipantCode %in% protein_data_clean$ParticipantCode,]
 
 # -> without adjustment
 pca_results_all <- run_pca_all(protein_data_PCA_all %>% 
-                                 select(SampleName, Target, NPQ, SampleMatrixType) %>%
+                                 select(SampleName, ParticipantCode,Target, NPQ, SampleMatrixType) %>%
                                  distinct())
 pdf("plots/PCA_plots/PCA_all_fluids.pdf", width = 8, height = 6.5)
 plot_pca_all(pca_results_all)
 dev.off()
 
+pdf("plots/PCA_plots/PCA_all_fluids_label.pdf", width = 8, height = 6.5)
+plot_pca_all(pca_results_all,label = TRUE)
+dev.off()
+
 # -> with adjustment 
-pca_results_all_adj <- run_pca_all_adjusted(adjust_dataset(protein_data_PCA_all) %>% 
-                                 select(SampleName, Target, NPQ_adj, SampleMatrixType) %>%
+pca_results_all_adj <- run_pca_all_adjusted(remove_effect_covariates(protein_data_PCA_all) %>% 
+                                 select(SampleName, ParticipantCode,Target, NPQ_adj, SampleMatrixType) %>%
                                  distinct())
 pdf("plots/PCA_plots/PCA_all_fluids_adjusted.pdf", width = 8, height = 6.5)
 plot_pca_all(pca_results_all_adj)
+dev.off()
+
+pdf("plots/PCA_plots/PCA_all_fluids_adjusted_label.pdf", width = 8, height = 6.5)
+plot_pca_all(pca_results_all_adj,label = TRUE)
 dev.off()

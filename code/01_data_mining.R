@@ -30,7 +30,6 @@ count_subtypes_per_fluid <- function(df, fluid) {
     mutate(biofluid = fluid)
 }
 
-
 ## 3. Get mean per fluid
 get_mean_per_fluid <- function(df, fluid) {
   df %>%
@@ -129,6 +128,24 @@ plot_detectability <- function(df, fluid, by_plate = FALSE) {
   p
 }
 
+## 6. Get median per fluid and plate
+get_median_per_fluid_plate <- function(df, fluid) {
+  df %>%
+    filter(SampleMatrixType == fluid) %>%
+    group_by(Target, UniProtID,PlateID) %>%
+    summarise(median_NPQ = median(NPQ), .groups = "drop")
+}
+
+## 7. Get median delta based on ref plate
+delta_median_per_fluid <- function(df,plate_ref){
+  df %>%
+    group_by(Target) %>%
+    mutate(ref_median = median_NPQ[PlateID == plate_ref],
+           delta = ref_median - median_NPQ) %>%
+    ungroup() %>%
+    select(Target,PlateID,delta)
+}
+
 ###############################################
 ### 1. Assign Group Labels
 ###############################################
@@ -175,6 +192,12 @@ table_APOE = protein_data_IDs %>%
   filter(Target == "APOE4") %>%
   mutate(APOE_status =  ifelse(NPQ > 10, "Carrier",ifelse(NPQ <= 10, "Non-carrier",NA)))
 
+table_APOE_notNA <- table_APOE %>% filter(!is.na(type))
+table_APOE_NA <- table_APOE %>% filter(is.na(type)) %>%
+  select(-PatientID,-type) %>%
+  left_join(clinical_table_slim %>% select(PatientID,ParticipantCode,type))
+table_APOE <- rbind(table_APOE_notNA,table_APOE_NA[,match(colnames(table_APOE_NA),colnames(table_APOE_notNA))])
+
 carrier_table <- table_APOE %>%
   group_by(SampleMatrixType, type, subtype, APOE_status) %>%
   summarise(n = n(), .groups = "drop") %>%
@@ -219,30 +242,7 @@ print(combined)
 dev.off()
 
 ###############################################
-### 6. NPQ Distributions by Plate
-###############################################
-
-unique_targets <- unique(protein_data$Target)
-
-for (target in unique_targets) {
-  
-  df_t <- protein_data %>%
-    filter(Target == target) %>%
-    mutate(SampleMatrixType = factor(SampleMatrixType,
-                                     levels = c("PLASMA", "SERUM", "CSF", "CONTROL")))
-  
-  p <- ggboxplot(df_t,
-                 x = "SampleMatrixType", y = "NPQ",
-                 add = "jitter", color = "PlateID") +
-    theme_bw()
-  
-  pdf(paste0("plots/NPQ_fluid_plate/NPQ_", target, ".pdf"))
-  print(p)
-  dev.off()
-}
-
-###############################################
-### 7. Target Detectability per Fluid & Plate
+### 6. Target Detectability per Fluid & Plate
 ###############################################
 
 td <- protein_data  %>%
@@ -273,3 +273,241 @@ for (fluid in fluids) {
   print(p2)
   dev.off()
 }
+
+###############################################
+### 7. Explore Normalization
+###############################################
+
+df_SERUM_median  <- get_median_per_fluid_plate(protein_data, "SERUM")
+df_PLASMA_median <- get_median_per_fluid_plate(protein_data, "PLASMA")
+df_CSF_median    <- get_median_per_fluid_plate(protein_data, "CSF")
+
+protein_data_median_all_together = protein_data %>%
+  group_by(Target, UniProtID,PlateID) %>%
+  summarise(median_NPQ = median(NPQ), .groups = "drop")
+
+df_SERUM_delta = delta_median_per_fluid(df_SERUM_median,"Plate01") 
+df_PLASMA_delta = delta_median_per_fluid(df_PLASMA_median,"Plate02")
+df_CSF_delta = delta_median_per_fluid(df_CSF_median,"Plate03")
+
+df_delta_all_together = delta_median_per_fluid(protein_data_median_all_together,"Plate01")
+
+df_SERUM_norm <- protein_data %>%
+  filter(SampleMatrixType == "SERUM") %>%
+  left_join(df_SERUM_delta) %>%
+  mutate(NPQ_norm = NPQ + delta) %>%
+  select(-delta)
+
+df_PLASMA_norm <- protein_data %>%
+  filter(SampleMatrixType == "PLASMA") %>%
+  left_join(df_PLASMA_delta) %>%
+  mutate(NPQ_norm = NPQ + delta) %>%
+  select(-delta)
+
+df_CSF_norm <- protein_data %>%
+  filter(SampleMatrixType == "CSF") %>%
+  left_join(df_CSF_delta) %>%
+  mutate(NPQ_norm = NPQ + delta) %>%
+  select(-delta)
+
+protein_data_norm = do.call("rbind",list(df_SERUM_norm,
+                                         df_PLASMA_norm,
+                                         df_CSF_norm))
+
+protein_data_norm_all_together = protein_data %>%
+  left_join(df_delta_all_together) %>%
+  mutate(NPQ_norm = NPQ + delta) %>%
+  select(-delta)
+
+#################################################################
+### 8. NPQ Distributions by Plate original and normalized data
+#################################################################
+protein_long <- protein_data_norm %>%
+  mutate(
+    SampleMatrixType = factor(
+      SampleMatrixType,
+      levels = c("PLASMA", "SERUM", "CSF", "CONTROL")
+    )
+  ) %>%
+  select(
+    Target, SampleMatrixType, PlateID, NPQ, NPQ_norm
+  ) %>%
+  pivot_longer(
+    cols = c(NPQ, NPQ_norm),
+    names_to = "Normalization",
+    values_to = "value"
+  ) %>%
+  mutate(
+    Normalization = factor(recode(
+      Normalization,
+      NPQ = "Before normalization",
+      NPQ_norm = "After normalization"
+    ),levels = c("Before normalization", "After normalization")
+    )
+  )
+
+protein_long_alltogether <- protein_data_norm_all_together %>%
+  mutate(
+    SampleMatrixType = factor(
+      SampleMatrixType,
+      levels = c("PLASMA", "SERUM", "CSF", "CONTROL")
+    )
+  ) %>%
+  select(
+    Target, SampleMatrixType, PlateID, NPQ, NPQ_norm
+  ) %>%
+  pivot_longer(
+    cols = c(NPQ, NPQ_norm),
+    names_to = "Normalization",
+    values_to = "value"
+  ) %>%
+  mutate(
+    Normalization = factor(recode(
+      Normalization,
+      NPQ = "Before normalization",
+      NPQ_norm = "After normalization"
+    ),levels = c("Before normalization", "After normalization")
+    )
+  )
+
+unique_targets <- unique(protein_data$Target)
+
+for (target in unique_targets) {
+  
+  df_t <- protein_long %>%
+    filter(Target == target)
+  
+  df_t_alltogether <- protein_long_alltogether %>%
+    filter(Target == target)
+  
+  p <- ggboxplot(
+    df_t,
+    x = "SampleMatrixType",
+    y = "value",
+    color = "PlateID",
+    add = "jitter"
+  ) +
+    facet_wrap(~ Normalization, ncol = 2) +
+    labs(
+      title = target,
+      y = "NPQ"
+    ) +
+    theme_bw()
+  
+  p_alltogether <- ggboxplot(
+    df_t_alltogether,
+    x = "SampleMatrixType",
+    y = "value",
+    color = "PlateID",
+    add = "jitter"
+  ) +
+    facet_wrap(~ Normalization, ncol = 2) +
+    labs(
+      title = target,
+      y = "NPQ"
+    ) +
+    theme_bw()
+  
+  pdf(paste0("plots/NPQ_fluid_plate/NPQ_", target, "_before_after_fluid.pdf"),
+      width = 10, height = 5)
+  print(p)
+  dev.off()
+  
+  pdf(paste0("plots/NPQ_fluid_plate/NPQ_", target, "_before_after_alltogether.pdf"),
+      width = 10, height = 5)
+  print(p_alltogether)
+  dev.off()
+}
+
+
+#################################################################
+### 9. Project-LOD of original and  normalized data
+#################################################################
+
+##############
+# Project-LOD normalized data
+df_reads_norm <- protein_data_norm_all_together %>%
+  filter(SampleType == "NC") %>%
+  mutate(
+    reads = 2^NPQ_norm - 1
+  )
+
+lod_linear_norm <- df_reads_norm %>%
+  group_by(Target) %>%
+  summarise(
+    mean_reads = mean(reads, na.rm = TRUE),
+    sd_reads   = sd(reads, na.rm = TRUE),
+    lod_reads  = mean_reads + 3 * sd_reads,
+    .groups = "drop"
+  )
+
+lod_project_norm <- lod_linear_norm %>%
+  mutate(
+    LOD_NPQ_norm = log2(lod_reads + 1)
+  ) %>%
+  select(Target, LOD_NPQ_norm)
+
+# Project-LOD non-normalized data
+df_reads <- protein_data %>%
+  filter(SampleType == "NC") %>%
+  mutate(
+    reads = 2^NPQ - 1
+  )
+
+lod_linear <- df_reads %>%
+  group_by(Target) %>%
+  summarise(
+    mean_reads = mean(reads, na.rm = TRUE),
+    sd_reads   = sd(reads, na.rm = TRUE),
+    lod_reads  = mean_reads + 3 * sd_reads,
+    .groups = "drop"
+  )
+
+lod_project <- lod_linear %>%
+  mutate(
+    LOD_NPQ = log2(lod_reads + 1)
+  ) %>%
+  select(Target, LOD_NPQ)
+
+## Attached to original target detectability
+target_detectability_extra = target_detectability %>%
+  dplyr::rename(Target = TargetName) %>%
+  left_join(lod_project_norm) %>%
+  left_join(lod_project) %>%
+  dplyr::rename(original_TargetLOD = TargetLOD_NPQ,
+                ProjectLOD_norm = LOD_NPQ_norm,
+                ProjectLOD = LOD_NPQ) %>%
+  arrange(Target)
+
+#################################################################
+### 10. Check targets' detectability across samples
+#################################################################
+protein_data_with_lod <- protein_data %>%
+  left_join(target_detectability_extra %>%
+              select(Target,ProjectLOD) %>% 
+              distinct()) %>%
+  mutate(below_lod = NPQ < ProjectLOD)
+
+detectability_summary <- protein_data_with_lod %>%
+  group_by(SampleMatrixType, Target) %>%
+  summarise(
+    n_samples = n(),
+    n_below_lod = sum(below_lod, na.rm = TRUE),
+    frac_below_lod = n_below_lod / n_samples,
+    .groups = "drop"
+  ) %>%
+  filter(SampleMatrixType != "CONTROL") %>%
+  arrange(Target,frac_below_lod) %>%
+  mutate(percent_below_lod = frac_below_lod * 100,
+         detectability = ifelse(frac_below_lod>0.5,"low","high"))
+
+writexl::write_xlsx(detectability_summary,"results/detectability_summary.xlsx")
+
+targets_below_LOD = detectability_summary %>%
+  select(SampleMatrixType, Target, percent_below_lod) %>%
+  tidyr::pivot_wider(
+    names_from = SampleMatrixType,
+    values_from = percent_below_lod
+  )
+
+writexl::write_xlsx(targets_below_LOD,"results/targets_below_LOD.xlsx")

@@ -194,7 +194,8 @@ ECAS_table = clinical_table_slim %>%
   ) %>%
   select(where(~ !all(is.na(.)))) %>%
   ungroup() %>%
-  select(PatientID,ParticipantCode,type,age,sex,contains("Ecas"))
+  select(PatientID,ParticipantCode,type,age,sex,contains("_1"),contains("_2"),contains("_3")) %>%
+  select(-contains("Erfassungsdatum"))
 
 writexl::write_xlsx(ECAS_table,"results/ECAS_overview.xlsx")
 
