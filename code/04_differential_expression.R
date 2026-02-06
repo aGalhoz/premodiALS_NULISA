@@ -159,6 +159,17 @@ DE_subgroups_plasma = summarise_mean_NPQ(protein_data_IDs,matrix_type = "PLASMA"
 DE_subgroups_plasma_final = finalise_DE_table(DE_subgroups_plasma)
 writexl::write_xlsx(DE_subgroups_plasma_final,"results/DE_subgroups_plasma.xlsx")
 
+# -> targets with high detectability
+DE_subgroups_plasma_high_detect = summarise_mean_NPQ(protein_data_IDs,matrix_type = "PLASMA") %>%
+  add_log2fc_standard() %>%
+  left_join(results_ALL_high_detectability$PLASMA$pvals) %>%
+  mutate(Fluid = rep("PLASMA")) %>%
+  filter(!is.na(pvalue_anova))
+
+DE_subgroups_plasma_high_detect_final = finalise_DE_table(DE_subgroups_plasma_high_detect)
+writexl::write_xlsx(DE_subgroups_plasma_high_detect_final,
+                    "results/DE_subgroups_plasma_high_detectability.xlsx")
+
 ## -> standard subgroups (adjusted)
 protein_data_IDs_covariates = protein_data_IDs %>%
   mutate(center = dplyr::case_when(
@@ -179,6 +190,18 @@ DE_subgroups_plasma_adj = summarise_mean_NPQ(adjust_dataset(protein_data_IDs_cov
 DE_subgroups_plasma_adj_final = finalise_DE_table(DE_subgroups_plasma_adj)
 writexl::write_xlsx(DE_subgroups_plasma_adj_final,"results/DE_subgroups_plasma_adjusted.xlsx")
 
+# -> targets with high detectability
+DE_subgroups_plasma_adj_high_detect = summarise_mean_NPQ(adjust_dataset(protein_data_IDs_covariates),
+                                             matrix_type = "PLASMA",adjusted = TRUE) %>%
+  add_log2fc_standard() %>%
+  left_join(results_ALL_high_detectability$PLASMA$pvals_adjusted) %>%
+  mutate(Fluid = rep("PLASMA")) %>%
+  filter(!is.na(pvalue_anova))
+
+DE_subgroups_plasma_adj_high_detect_final = finalise_DE_table(DE_subgroups_plasma_adj_high_detect)
+writexl::write_xlsx(DE_subgroups_plasma_adj_high_detect_final,
+                    "results/DE_subgroups_plasma_adjusted_high_detectability.xlsx")
+
 ## -> PGMC subgroups (not adjusted)
 DE_PGMC_subgroups_plasma = summarise_mean_NPQ(protein_data_CTR_PGMC_IDs,matrix_type = "PLASMA") %>%
   add_log2fc_pgmc() %>%
@@ -187,6 +210,18 @@ DE_PGMC_subgroups_plasma = summarise_mean_NPQ(protein_data_CTR_PGMC_IDs,matrix_t
 
 DE_PGMC_subgroups_plasma_final = finalise_DE_table(DE_PGMC_subgroups_plasma,PGMC_groups = TRUE)
 writexl::write_xlsx(DE_PGMC_subgroups_plasma_final,"results/DE_PGMC_subgroups_plasma.xlsx")
+
+# -> targets with high detectability
+DE_PGMC_subgroups_plasma_high_detect = summarise_mean_NPQ(protein_data_CTR_PGMC_IDs,matrix_type = "PLASMA") %>%
+  add_log2fc_pgmc() %>%
+  left_join(results_PGMC_high_detectability$PLASMA$pvals) %>%
+  mutate(Fluid = rep("PLASMA")) %>%
+  filter(!is.na(pvalue_anova))
+
+DE_PGMC_subgroups_plasma_high_detect_final = finalise_DE_table(DE_PGMC_subgroups_plasma_high_detect,
+                                                               PGMC_groups = TRUE)
+writexl::write_xlsx(DE_PGMC_subgroups_plasma_high_detect_final,
+                    "results/DE_PGMC_subgroups_plasma__high_detectability.xlsx")
 
 ## -> PGMC subgroups ( adjusted)
 protein_data_CTR_PGMC_IDs_covariates = protein_data_CTR_PGMC_IDs %>% select(-type) %>%
@@ -209,6 +244,20 @@ DE_PGMC_subgroups_plasma_adj = summarise_mean_NPQ(adjust_dataset(protein_data_CT
 DE_PGMC_subgroups_plasma_adj_final = finalise_DE_table(DE_PGMC_subgroups_plasma_adj,PGMC_groups = TRUE)
 writexl::write_xlsx(DE_PGMC_subgroups_plasma_adj_final,"results/DE_PGMC_subgroups_plasma_adjusted.xlsx")
 
+# -> targets with high detectability
+DE_PGMC_subgroups_plasma_adj_high_detect = summarise_mean_NPQ(adjust_dataset(protein_data_CTR_PGMC_IDs_covariates),
+                                                  matrix_type = "PLASMA",adjusted = TRUE) %>%
+  add_log2fc_pgmc() %>%
+  left_join(results_PGMC_high_detectability$PLASMA$pvals_adjusted) %>%
+  mutate(Fluid = rep("PLASMA")) %>%
+  filter(!is.na(pvalue_anova))
+
+DE_PGMC_subgroups_plasma_adj_high_detect_final = finalise_DE_table(DE_PGMC_subgroups_plasma_adj_high_detect,
+                                                                   PGMC_groups = TRUE)
+writexl::write_xlsx(DE_PGMC_subgroups_plasma_adj_high_detect_final,
+                    "results/DE_PGMC_subgroups_plasma_adjusted_high_detectability.xlsx")
+
+
 ### SERUM
 ## -> standard subgroups (not adjusted)
 DE_subgroups_SERUM = summarise_mean_NPQ(protein_data_IDs,matrix_type = "SERUM") %>%
@@ -218,6 +267,17 @@ DE_subgroups_SERUM = summarise_mean_NPQ(protein_data_IDs,matrix_type = "SERUM") 
 
 DE_subgroups_SERUM_final = finalise_DE_table(DE_subgroups_SERUM)
 writexl::write_xlsx(DE_subgroups_SERUM_final,"results/DE_subgroups_SERUM.xlsx")
+
+# -> targets with high detectability
+DE_subgroups_SERUM_high_detect = summarise_mean_NPQ(protein_data_IDs,matrix_type = "SERUM") %>%
+  add_log2fc_standard() %>%
+  left_join(results_ALL_high_detectability$SERUM$pvals) %>%
+  mutate(Fluid = rep("SERUM")) %>%
+  filter(!is.na(pvalue_anova))
+
+DE_subgroups_SERUM_high_detect_final = finalise_DE_table(DE_subgroups_SERUM_high_detect)
+writexl::write_xlsx(DE_subgroups_SERUM_high_detect_final,
+                    "results/DE_subgroups_SERUM_high_detectability.xlsx")
 
 ## -> standard subgroups (adjusted)
 DE_subgroups_SERUM_adj = summarise_mean_NPQ(adjust_dataset(protein_data_IDs_covariates),
@@ -229,6 +289,18 @@ DE_subgroups_SERUM_adj = summarise_mean_NPQ(adjust_dataset(protein_data_IDs_cova
 DE_subgroups_SERUM_adj_final = finalise_DE_table(DE_subgroups_SERUM_adj)
 writexl::write_xlsx(DE_subgroups_SERUM_adj_final,"results/DE_subgroups_SERUM_adjusted.xlsx")
 
+# -> targets with high detectability
+DE_subgroups_SERUM_adj_high_detect = summarise_mean_NPQ(adjust_dataset(protein_data_IDs_covariates),
+                                                         matrix_type = "SERUM",adjusted = TRUE) %>%
+  add_log2fc_standard() %>%
+  left_join(results_ALL_high_detectability$SERUM$pvals_adjusted) %>%
+  mutate(Fluid = rep("SERUM")) %>%
+  filter(!is.na(pvalue_anova))
+
+DE_subgroups_SERUM_adj_high_detect_final = finalise_DE_table(DE_subgroups_SERUM_adj_high_detect)
+writexl::write_xlsx(DE_subgroups_SERUM_adj_high_detect_final,
+                    "results/DE_subgroups_SERUM_adjusted_high_detectability.xlsx")
+
 ## -> PGMC subgroups (not adjusted)
 DE_PGMC_subgroups_SERUM = summarise_mean_NPQ(protein_data_CTR_PGMC_IDs,matrix_type = "SERUM") %>%
   add_log2fc_pgmc() %>%
@@ -237,6 +309,18 @@ DE_PGMC_subgroups_SERUM = summarise_mean_NPQ(protein_data_CTR_PGMC_IDs,matrix_ty
 
 DE_PGMC_subgroups_SERUM_final = finalise_DE_table(DE_PGMC_subgroups_SERUM,PGMC_groups = TRUE)
 writexl::write_xlsx(DE_PGMC_subgroups_SERUM_final,"results/DE_PGMC_subgroups_SERUM.xlsx")
+
+# -> targets with high detectability
+DE_PGMC_subgroups_SERUM_high_detect = summarise_mean_NPQ(protein_data_CTR_PGMC_IDs,matrix_type = "SERUM") %>%
+  add_log2fc_pgmc() %>%
+  left_join(results_PGMC_high_detectability$SERUM$pvals) %>%
+  mutate(Fluid = rep("SERUM")) %>%
+  filter(!is.na(pvalue_anova))
+
+DE_PGMC_subgroups_SERUM_high_detect_final = finalise_DE_table(DE_PGMC_subgroups_SERUM_high_detect,
+                                                               PGMC_groups = TRUE)
+writexl::write_xlsx(DE_PGMC_subgroups_SERUM_high_detect_final,
+                    "results/DE_PGMC_subgroups_SERUM__high_detectability.xlsx")
 
 ## -> PGMC subgroups ( adjusted)
 DE_PGMC_subgroups_SERUM_adj = summarise_mean_NPQ(adjust_dataset(protein_data_CTR_PGMC_IDs_covariates),
@@ -248,6 +332,19 @@ DE_PGMC_subgroups_SERUM_adj = summarise_mean_NPQ(adjust_dataset(protein_data_CTR
 DE_PGMC_subgroups_SERUM_adj_final = finalise_DE_table(DE_PGMC_subgroups_SERUM_adj,PGMC_groups = TRUE)
 writexl::write_xlsx(DE_PGMC_subgroups_SERUM_adj_final,"results/DE_PGMC_subgroups_SERUM_adjusted.xlsx")
 
+# -> targets with high detectability
+DE_PGMC_subgroups_SERUM_adj_high_detect = summarise_mean_NPQ(adjust_dataset(protein_data_CTR_PGMC_IDs_covariates),
+                                                              matrix_type = "SERUM",adjusted = TRUE) %>%
+  add_log2fc_pgmc() %>%
+  left_join(results_PGMC_high_detectability$SERUM$pvals_adjusted) %>%
+  mutate(Fluid = rep("SERUM")) %>%
+  filter(!is.na(pvalue_anova))
+
+DE_PGMC_subgroups_SERUM_adj_high_detect_final = finalise_DE_table(DE_PGMC_subgroups_SERUM_adj_high_detect,
+                                                                   PGMC_groups = TRUE)
+writexl::write_xlsx(DE_PGMC_subgroups_SERUM_adj_high_detect_final,
+                    "results/DE_PGMC_subgroups_SERUM_adjusted_high_detectability.xlsx")
+
 ### CSF
 ## -> standard subgroups (not adjusted)
 DE_subgroups_CSF = summarise_mean_NPQ(protein_data_IDs,matrix_type = "CSF") %>%
@@ -257,6 +354,17 @@ DE_subgroups_CSF = summarise_mean_NPQ(protein_data_IDs,matrix_type = "CSF") %>%
 
 DE_subgroups_CSF_final = finalise_DE_table(DE_subgroups_CSF)
 writexl::write_xlsx(DE_subgroups_CSF_final,"results/DE_subgroups_CSF.xlsx")
+
+# -> targets with high detectability
+DE_subgroups_CSF_high_detect = summarise_mean_NPQ(protein_data_IDs,matrix_type = "CSF") %>%
+  add_log2fc_standard() %>%
+  left_join(results_ALL_high_detectability$CSF$pvals) %>%
+  mutate(Fluid = rep("CSF")) %>%
+  filter(!is.na(pvalue_anova))
+
+DE_subgroups_CSF_high_detect_final = finalise_DE_table(DE_subgroups_CSF_high_detect)
+writexl::write_xlsx(DE_subgroups_CSF_high_detect_final,
+                    "results/DE_subgroups_CSF_high_detectability.xlsx")
 
 ## -> standard subgroups (adjusted)
 DE_subgroups_CSF_adj = summarise_mean_NPQ(adjust_dataset(protein_data_IDs_covariates),
@@ -268,6 +376,18 @@ DE_subgroups_CSF_adj = summarise_mean_NPQ(adjust_dataset(protein_data_IDs_covari
 DE_subgroups_CSF_adj_final = finalise_DE_table(DE_subgroups_CSF_adj)
 writexl::write_xlsx(DE_subgroups_CSF_adj_final,"results/DE_subgroups_CSF_adjusted.xlsx")
 
+# -> targets with high detectability
+DE_subgroups_CSF_adj_high_detect = summarise_mean_NPQ(adjust_dataset(protein_data_IDs_covariates),
+                                                        matrix_type = "CSF",adjusted = TRUE) %>%
+  add_log2fc_standard() %>%
+  left_join(results_ALL_high_detectability$CSF$pvals_adjusted) %>%
+  mutate(Fluid = rep("CSF")) %>%
+  filter(!is.na(pvalue_anova))
+
+DE_subgroups_CSF_adj_high_detect_final = finalise_DE_table(DE_subgroups_CSF_adj_high_detect)
+writexl::write_xlsx(DE_subgroups_CSF_adj_high_detect_final,
+                    "results/DE_subgroups_CSF_adjusted_high_detectability.xlsx")
+
 ## -> PGMC subgroups (not adjusted)
 DE_PGMC_subgroups_CSF = summarise_mean_NPQ(protein_data_CTR_PGMC_IDs,matrix_type = "CSF") %>%
   add_log2fc_pgmc() %>%
@@ -276,6 +396,18 @@ DE_PGMC_subgroups_CSF = summarise_mean_NPQ(protein_data_CTR_PGMC_IDs,matrix_type
 
 DE_PGMC_subgroups_CSF_final = finalise_DE_table(DE_PGMC_subgroups_CSF,PGMC_groups = TRUE)
 writexl::write_xlsx(DE_PGMC_subgroups_CSF_final,"results/DE_PGMC_subgroups_CSF.xlsx")
+
+# -> targets with high detectability
+DE_PGMC_subgroups_CSF_high_detect = summarise_mean_NPQ(protein_data_CTR_PGMC_IDs,matrix_type = "CSF") %>%
+  add_log2fc_pgmc() %>%
+  left_join(results_PGMC_high_detectability$CSF$pvals) %>%
+  mutate(Fluid = rep("CSF")) %>%
+  filter(!is.na(pvalue_anova))
+
+DE_PGMC_subgroups_CSF_high_detect_final = finalise_DE_table(DE_PGMC_subgroups_CSF_high_detect,
+                                                              PGMC_groups = TRUE)
+writexl::write_xlsx(DE_PGMC_subgroups_CSF_high_detect_final,
+                    "results/DE_PGMC_subgroups_CSF__high_detectability.xlsx")
 
 ## -> PGMC subgroups ( adjusted)
 DE_PGMC_subgroups_CSF_adj = summarise_mean_NPQ(adjust_dataset(protein_data_CTR_PGMC_IDs_covariates),
@@ -286,6 +418,19 @@ DE_PGMC_subgroups_CSF_adj = summarise_mean_NPQ(adjust_dataset(protein_data_CTR_P
 
 DE_PGMC_subgroups_CSF_adj_final = finalise_DE_table(DE_PGMC_subgroups_CSF_adj,PGMC_groups = TRUE)
 writexl::write_xlsx(DE_PGMC_subgroups_CSF_adj_final,"results/DE_PGMC_subgroups_CSF_adjusted.xlsx")
+
+# -> targets with high detectability
+DE_PGMC_subgroups_CSF_adj_high_detect = summarise_mean_NPQ(adjust_dataset(protein_data_CTR_PGMC_IDs_covariates),
+                                                             matrix_type = "CSF",adjusted = TRUE) %>%
+  add_log2fc_pgmc() %>%
+  left_join(results_PGMC_high_detectability$CSF$pvals_adjusted) %>%
+  mutate(Fluid = rep("CSF")) %>%
+  filter(!is.na(pvalue_anova))
+
+DE_PGMC_subgroups_CSF_adj_high_detect_final = finalise_DE_table(DE_PGMC_subgroups_CSF_adj_high_detect,
+                                                                  PGMC_groups = TRUE)
+writexl::write_xlsx(DE_PGMC_subgroups_CSF_adj_high_detect_final,
+                    "results/DE_PGMC_subgroups_CSF_adjusted_high_detectability.xlsx")
 
 ###### VOLCANO PLOTS 
 ## 1: ALS vs CTR 
@@ -301,9 +446,17 @@ volcano_ALS_CTR_plasma = volcano_plot(DE_plasma_ALS_CTR,"log2FC_ALS_CTR",
                                                  'ALS'= "#3da0c2"),
                                       add_x = 4.9,add_y = 0.6,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_CTR_plasma_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_CTR_plasma
-dev.off()
+# -> plasma (not adjusted & high detectability)
+DE_plasma_ALS_CTR_high_detect = DE_subgroups_plasma_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_CTR,pvalue_ALS_CTR,padj_ALS_CTR) %>%
+  add_DE_flag(lfc = "log2FC_ALS_CTR",padj = "padj_ALS_CTR",up = "ALS",down = "CTR",alpha = 0.1)
+
+volcano_ALS_CTR_plasma_high_detect = volcano_plot(DE_plasma_ALS_CTR_high_detect,"log2FC_ALS_CTR", 
+                                      title = "ALS vs CTR in plasma",
+                                      colors = c('CTR' = "#C25F3D", 
+                                                 'ns' = 'lightgrey', 
+                                                 'ALS'= "#3da0c2"),
+                                      add_x = 4.9,add_y = 0.6,fdr = 0.1)
 
 # -> plasma (adjusted)
 DE_plasma_ALS_CTR_adj = DE_subgroups_plasma_adj_final %>%
@@ -317,9 +470,17 @@ volcano_ALS_CTR_plasma_adj = volcano_plot(DE_plasma_ALS_CTR_adj,"log2FC_ALS_CTR"
                                                  'ALS'= "#3da0c2"),
                                       add_x = 2.5,add_y = 0.2,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_CTR_plasma_adj_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_CTR_plasma_adj
-dev.off()
+# -> plasma (adjusted + high detectability)
+DE_plasma_ALS_CTR_adj_high_detect = DE_subgroups_plasma_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_CTR,pvalue_ALS_CTR,padj_ALS_CTR) %>%
+  add_DE_flag(lfc = "log2FC_ALS_CTR",padj = "padj_ALS_CTR",up = "ALS",down = "CTR",alpha = 0.1)
+
+volcano_ALS_CTR_plasma_adj_high_detect = volcano_plot(DE_plasma_ALS_CTR_adj_high_detect,"log2FC_ALS_CTR", 
+                                          title = "ALS vs CTR in plasma (adjusted)",
+                                          colors = c('CTR' = "#C25F3D", 
+                                                     'ns' = 'lightgrey', 
+                                                     'ALS'= "#3da0c2"),
+                                          add_x = 2.5,add_y = 0.2,fdr = 0.1)
 
 # -> CSF (not adjusted)
 DE_CSF_ALS_CTR = DE_subgroups_CSF_final %>%
@@ -333,9 +494,17 @@ volcano_ALS_CTR_CSF = volcano_plot(DE_CSF_ALS_CTR,"log2FC_ALS_CTR",
                                                  'ALS'= "#3da0c2"),
                                       add_x = 3.4,add_y = 0.6,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_CTR_CSF_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_CTR_CSF
-dev.off()
+# -> CSF (not adjusted and high detectability)
+DE_CSF_ALS_CTR_high_detect = DE_subgroups_CSF_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_CTR,pvalue_ALS_CTR,padj_ALS_CTR) %>%
+  add_DE_flag(lfc = "log2FC_ALS_CTR",padj = "padj_ALS_CTR",up = "ALS",down = "CTR",alpha = 0.1)
+
+volcano_ALS_CTR_CSF_high_detect = volcano_plot(DE_CSF_ALS_CTR_high_detect,"log2FC_ALS_CTR", 
+                                   title = "ALS vs CTR in CSF",
+                                   colors = c('CTR' = "#C25F3D", 
+                                              'ns' = 'lightgrey', 
+                                              'ALS'= "#3da0c2"),
+                                   add_x = 3.4,add_y = 0.6,fdr = 0.1)
 
 # -> CSF (adjusted)
 DE_CSF_ALS_CTR_adj = DE_subgroups_CSF_adj_final %>%
@@ -349,9 +518,17 @@ volcano_ALS_CTR_CSF_adj = volcano_plot(DE_CSF_ALS_CTR_adj,"log2FC_ALS_CTR",
                                                      'ALS'= "#3da0c2",fdr = 0.1),
                                           add_x = 1.8,add_y = 0.2)
 
-pdf("plots/volcano_plots/volcano_ALS_CTR_CSF_adj_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_CTR_CSF_adj
-dev.off()
+# -> CSF (adjusted + high detectability)
+DE_CSF_ALS_CTR_adj_high_detect = DE_subgroups_CSF_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_CTR,pvalue_ALS_CTR,padj_ALS_CTR) %>%
+  add_DE_flag(lfc = "log2FC_ALS_CTR",padj = "padj_ALS_CTR",up = "ALS",down = "CTR",alpha = 0.1)
+
+volcano_ALS_CTR_CSF_adj_high_detect = volcano_plot(DE_CSF_ALS_CTR_adj_high_detect,"log2FC_ALS_CTR", 
+                                       title = "ALS vs CTR in CSF (adjusted)",
+                                       colors = c('CTR' = "#C25F3D", 
+                                                  'ns' = 'lightgrey', 
+                                                  'ALS'= "#3da0c2",fdr = 0.1),
+                                       add_x = 1.8,add_y = 0.2)
 
 # -> SERUM (not adjusted)
 DE_SERUM_ALS_CTR = DE_subgroups_SERUM_final %>%
@@ -365,9 +542,17 @@ volcano_ALS_CTR_SERUM = volcano_plot(DE_SERUM_ALS_CTR,"log2FC_ALS_CTR",
                                               'ALS'= "#3da0c2"),
                                    add_x = 4.3,add_y = 0.6,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_CTR_SERUM_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_CTR_SERUM
-dev.off()
+# -> SERUM (not adjusted + high detectability)
+DE_SERUM_ALS_CTR_high_detect = DE_subgroups_SERUM_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_CTR,pvalue_ALS_CTR,padj_ALS_CTR) %>%
+  add_DE_flag(lfc = "log2FC_ALS_CTR",padj = "padj_ALS_CTR",up = "ALS",down = "CTR",alpha = 0.1)
+
+volcano_ALS_CTR_SERUM_high_detect = volcano_plot(DE_SERUM_ALS_CTR_high_detect,"log2FC_ALS_CTR", 
+                                     title = "ALS vs CTR in SERUM",
+                                     colors = c('CTR' = "#C25F3D", 
+                                                'ns' = 'lightgrey', 
+                                                'ALS'= "#3da0c2"),
+                                     add_x = 4.3,add_y = 0.6,fdr = 0.1)
 
 # -> SERUM (adjusted)
 DE_SERUM_ALS_CTR_adj = DE_subgroups_SERUM_adj_final %>%
@@ -381,9 +566,17 @@ volcano_ALS_CTR_SERUM_adj = volcano_plot(DE_SERUM_ALS_CTR_adj,"log2FC_ALS_CTR",
                                                   'ALS'= "#3da0c2"),
                                        add_x = 2.2,add_y = 0.2,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_CTR_SERUM_adj_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_CTR_SERUM_adj
-dev.off()
+# -> SERUM (adjusted + high detectability)
+DE_SERUM_ALS_CTR_adj_high_detect = DE_subgroups_SERUM_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_CTR,pvalue_ALS_CTR,padj_ALS_CTR) %>%
+  add_DE_flag(lfc = "log2FC_ALS_CTR",padj = "padj_ALS_CTR",up = "ALS",down = "CTR",alpha = 0.1)
+
+volcano_ALS_CTR_SERUM_adj_high_detect = volcano_plot(DE_SERUM_ALS_CTR_adj_high_detect,"log2FC_ALS_CTR", 
+                                         title = "ALS vs CTR in SERUM (adjusted)",
+                                         colors = c('CTR' = "#C25F3D", 
+                                                    'ns' = 'lightgrey', 
+                                                    'ALS'= "#3da0c2"),
+                                         add_x = 2.2,add_y = 0.2,fdr = 0.1)
 
 # -> all together
 pdf("plots/volcano_plots/volcano_ALS_CTR_all_FDR10.pdf", onefile = TRUE, width = 14, height = 15)
@@ -393,6 +586,15 @@ grid.arrange(volcano_ALS_CTR_plasma,
              volcano_ALS_CTR_SERUM_adj,
              volcano_ALS_CTR_CSF,
              volcano_ALS_CTR_CSF_adj,nrow = 3, ncol = 2)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_ALS_CTR_all_FDR10_high_detect.pdf", onefile = TRUE, width = 14, height = 15)
+grid.arrange(volcano_ALS_CTR_plasma_high_detect, 
+             volcano_ALS_CTR_plasma_adj_high_detect,
+             volcano_ALS_CTR_SERUM_high_detect,
+             volcano_ALS_CTR_SERUM_adj_high_detect,
+             volcano_ALS_CTR_CSF_high_detect,
+             volcano_ALS_CTR_CSF_adj_high_detect,nrow = 3, ncol = 2)
 dev.off()
 
 ## 2: ALS vs PGMC 
@@ -408,9 +610,17 @@ volcano_ALS_PGMC_plasma = volcano_plot(DE_plasma_ALS_PGMC,"log2FC_ALS_PGMC",
                                                  'ALS'= "#3da0c2"),
                                       add_x = 3.3,add_y = 0.6,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_PGMC_plasma_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_PGMC_plasma
-dev.off()
+# -> plasma (not adjusted + high detect)
+DE_plasma_ALS_PGMC_high_detect = DE_subgroups_plasma_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_PGMC,pvalue_ALS_PGMC,padj_ALS_PGMC) %>%
+  add_DE_flag(lfc = "log2FC_ALS_PGMC",padj = "padj_ALS_PGMC",up = "ALS",down = "PGMC",alpha = 0.1)
+
+volcano_ALS_PGMC_plasma_high_detect = volcano_plot(DE_plasma_ALS_PGMC_high_detect,"log2FC_ALS_PGMC", 
+                                       title = "ALS vs PGMC in plasma",
+                                       colors = c('PGMC' = "#C25F3D", 
+                                                  'ns' = 'lightgrey', 
+                                                  'ALS'= "#3da0c2"),
+                                       add_x = 3.3,add_y = 0.6,fdr = 0.1)
 
 # -> plasma (adjusted)
 DE_plasma_ALS_PGMC_adj = DE_subgroups_plasma_adj_final %>%
@@ -424,9 +634,17 @@ volcano_ALS_PGMC_plasma_adj = volcano_plot(DE_plasma_ALS_PGMC_adj,"log2FC_ALS_PG
                                                      'ALS'= "#3da0c2",fdr = 0.1),
                                           add_x = 1,add_y = 0.2)
 
-pdf("plots/volcano_plots/volcano_ALS_PGMC_plasma_adj_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_PGMC_plasma_adj
-dev.off()
+# -> plasma (adjusted + high detect)
+DE_plasma_ALS_PGMC_adj_high_detect = DE_subgroups_plasma_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_PGMC,pvalue_ALS_PGMC,padj_ALS_PGMC) %>%
+  add_DE_flag(lfc = "log2FC_ALS_PGMC",padj = "padj_ALS_PGMC",up = "ALS",down = "PGMC",alpha = 0.1)
+
+volcano_ALS_PGMC_plasma_adj_high_detect = volcano_plot(DE_plasma_ALS_PGMC_adj_high_detect,"log2FC_ALS_PGMC", 
+                                           title = "ALS vs PGMC in plasma (adjusted)",
+                                           colors = c('PGMC' = "#C25F3D", 
+                                                      'ns' = 'lightgrey', 
+                                                      'ALS'= "#3da0c2",fdr = 0.1),
+                                           add_x = 1,add_y = 0.2)
 
 # -> CSF (not adjusted)
 DE_CSF_ALS_PGMC = DE_subgroups_CSF_final %>%
@@ -440,9 +658,17 @@ volcano_ALS_PGMC_CSF = volcano_plot(DE_CSF_ALS_PGMC,"log2FC_ALS_PGMC",
                                               'ALS'= "#3da0c2"),
                                    add_x = 3.4,add_y = 0.6,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_PGMC_CSF_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_PGMC_CSF
-dev.off()
+# -> CSF (not adjusted + high detect)
+DE_CSF_ALS_PGMC_high_detect = DE_subgroups_CSF_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_PGMC,pvalue_ALS_PGMC,padj_ALS_PGMC) %>%
+  add_DE_flag(lfc = "log2FC_ALS_PGMC",padj = "padj_ALS_PGMC",up = "ALS",down = "PGMC",alpha = 0.1)
+
+volcano_ALS_PGMC_CSF_high_detect = volcano_plot(DE_CSF_ALS_PGMC_high_detect,"log2FC_ALS_PGMC", 
+                                    title = "ALS vs PGMC in CSF",
+                                    colors = c('PGMC' = "#C25F3D", 
+                                               'ns' = 'lightgrey', 
+                                               'ALS'= "#3da0c2"),
+                                    add_x = 3.4,add_y = 0.6,fdr = 0.1)
 
 # -> CSF (adjusted)
 DE_CSF_ALS_PGMC_adj = DE_subgroups_CSF_adj_final %>%
@@ -456,9 +682,17 @@ volcano_ALS_PGMC_CSF_adj = volcano_plot(DE_CSF_ALS_PGMC_adj,"log2FC_ALS_PGMC",
                                                   'ALS'= "#3da0c2"),
                                        add_x = 0.6,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_PGMC_CSF_adj_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_PGMC_CSF_adj
-dev.off()
+# -> CSF (adjusted + high detect)
+DE_CSF_ALS_PGMC_adj_high_detect = DE_subgroups_CSF_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_PGMC,pvalue_ALS_PGMC,padj_ALS_PGMC) %>%
+  add_DE_flag(lfc = "log2FC_ALS_PGMC",padj = "padj_ALS_PGMC",up = "ALS",down = "PGMC",alpha = 0.1)
+
+volcano_ALS_PGMC_CSF_adj_high_detect = volcano_plot(DE_CSF_ALS_PGMC_adj_high_detect,"log2FC_ALS_PGMC", 
+                                        title = "ALS vs PGMC in CSF (adjusted)",
+                                        colors = c('PGMC' = "#C25F3D", 
+                                                   'ns' = 'lightgrey', 
+                                                   'ALS'= "#3da0c2"),
+                                        add_x = 0.6,add_y = 0.1,fdr = 0.1)
 
 # -> SERUM (not adjusted)
 DE_SERUM_ALS_PGMC = DE_subgroups_SERUM_final %>%
@@ -472,9 +706,17 @@ volcano_ALS_PGMC_SERUM = volcano_plot(DE_SERUM_ALS_PGMC,"log2FC_ALS_PGMC",
                                                 'ALS'= "#3da0c2"),
                                      add_x = 3.5,add_y = 0.6,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_PGMC_SERUM_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_PGMC_SERUM
-dev.off()
+# -> SERUM (not adjusted + high detect)
+DE_SERUM_ALS_PGMC_high_detect = DE_subgroups_SERUM_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_PGMC,pvalue_ALS_PGMC,padj_ALS_PGMC) %>%
+  add_DE_flag(lfc = "log2FC_ALS_PGMC",padj = "padj_ALS_PGMC",up = "ALS",down = "PGMC",alpha = 0.1)
+
+volcano_ALS_PGMC_SERUM_high_detect = volcano_plot(DE_SERUM_ALS_PGMC_high_detect,"log2FC_ALS_PGMC", 
+                                      title = "ALS vs PGMC in SERUM",
+                                      colors = c('PGMC' = "#C25F3D", 
+                                                 'ns' = 'lightgrey', 
+                                                 'ALS'= "#3da0c2"),
+                                      add_x = 3.5,add_y = 0.6,fdr = 0.1)
 
 # -> SERUM (adjusted)
 DE_SERUM_ALS_PGMC_adj = DE_subgroups_SERUM_adj_final %>%
@@ -488,9 +730,17 @@ volcano_ALS_PGMC_SERUM_adj = volcano_plot(DE_SERUM_ALS_PGMC_adj,"log2FC_ALS_PGMC
                                                     'ALS'= "#3da0c2"),
                                          add_x = 1.1,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_PGMC_SERUM_adj_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_PGMC_SERUM_adj
-dev.off()
+# -> SERUM (adjusted + high detect)
+DE_SERUM_ALS_PGMC_adj_high_detect = DE_subgroups_SERUM_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_PGMC,pvalue_ALS_PGMC,padj_ALS_PGMC) %>%
+  add_DE_flag(lfc = "log2FC_ALS_PGMC",padj = "padj_ALS_PGMC",up = "ALS",down = "PGMC",alpha = 0.1)
+
+volcano_ALS_PGMC_SERUM_adj_high_detect = volcano_plot(DE_SERUM_ALS_PGMC_adj_high_detect,"log2FC_ALS_PGMC", 
+                                          title = "ALS vs PGMC in SERUM (adjusted)",
+                                          colors = c('PGMC' = "#C25F3D", 
+                                                     'ns' = 'lightgrey', 
+                                                     'ALS'= "#3da0c2"),
+                                          add_x = 1.1,add_y = 0.1,fdr = 0.1)
 
 # -> all together
 pdf("plots/volcano_plots/volcano_ALS_PGMC_all_FDR10.pdf", onefile = TRUE, width = 14, height = 15)
@@ -500,6 +750,16 @@ grid.arrange(volcano_ALS_PGMC_plasma,
              volcano_ALS_PGMC_SERUM_adj,
              volcano_ALS_PGMC_CSF,
              volcano_ALS_PGMC_CSF_adj,nrow = 3, ncol = 2)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_ALS_PGMC_all_FDR10_high_detect.pdf", 
+    onefile = TRUE, width = 14, height = 15)
+grid.arrange(volcano_ALS_PGMC_plasma_high_detect, 
+             volcano_ALS_PGMC_plasma_adj_high_detect,
+             volcano_ALS_PGMC_SERUM_high_detect,
+             volcano_ALS_PGMC_SERUM_adj_high_detect,
+             volcano_ALS_PGMC_CSF_high_detect,
+             volcano_ALS_PGMC_CSF_adj_high_detect,nrow = 3, ncol = 2)
 dev.off()
 
 ## 3: ALS vs mimic 
@@ -515,9 +775,17 @@ volcano_ALS_mimic_plasma = volcano_plot(DE_plasma_ALS_mimic,"log2FC_ALS_mimic",
                                                   'ALS'= "#3da0c2"),
                                        add_x = 2.8,add_y = 0.4,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_mimic_plasma_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_mimic_plasma
-dev.off()
+# -> plasma (not adjusted + high detect)
+DE_plasma_ALS_mimic_high_detect = DE_subgroups_plasma_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_mimic,pvalue_ALS_mimic,padj_ALS_mimic) %>%
+  add_DE_flag(lfc = "log2FC_ALS_mimic",padj = "padj_ALS_mimic",up = "ALS",down = "mimic",alpha = 0.1)
+
+volcano_ALS_mimic_plasma_high_detect = volcano_plot(DE_plasma_ALS_mimic_high_detect,"log2FC_ALS_mimic", 
+                                        title = "ALS vs mimic in plasma",
+                                        colors = c('mimic' = "#C25F3D", 
+                                                   'ns' = 'lightgrey', 
+                                                   'ALS'= "#3da0c2"),
+                                        add_x = 2.8,add_y = 0.4,fdr = 0.1)
 
 # -> plasma (adjusted)
 DE_plasma_ALS_mimic_adj = DE_subgroups_plasma_adj_final %>%
@@ -531,9 +799,17 @@ volcano_ALS_mimic_plasma_adj = volcano_plot(DE_plasma_ALS_mimic_adj,"log2FC_ALS_
                                                       'ALS'= "#3da0c2"),
                                            add_x = 2,add_y = 0.2,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_mimic_plasma_adj_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_mimic_plasma_adj
-dev.off()
+# -> plasma (adjusted + high detect)
+DE_plasma_ALS_mimic_adj_high_detect = DE_subgroups_plasma_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_mimic,pvalue_ALS_mimic,padj_ALS_mimic) %>%
+  add_DE_flag(lfc = "log2FC_ALS_mimic",padj = "padj_ALS_mimic",up = "ALS",down = "mimic",alpha = 0.1)
+
+volcano_ALS_mimic_plasma_adj_high_detect = volcano_plot(DE_plasma_ALS_mimic_adj_high_detect,"log2FC_ALS_mimic", 
+                                            title = "ALS vs mimic in plasma (adjusted)",
+                                            colors = c('mimic' = "#C25F3D", 
+                                                       'ns' = 'lightgrey', 
+                                                       'ALS'= "#3da0c2"),
+                                            add_x = 2,add_y = 0.2,fdr = 0.1)
 
 # -> CSF (not adjusted)
 DE_CSF_ALS_mimic = DE_subgroups_CSF_final %>%
@@ -547,9 +823,17 @@ volcano_ALS_mimic_CSF = volcano_plot(DE_CSF_ALS_mimic,"log2FC_ALS_mimic",
                                                'ALS'= "#3da0c2"),
                                     add_x = 1.5,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_mimic_CSF_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_mimic_CSF
-dev.off()
+# -> CSF (not adjusted + high detect)
+DE_CSF_ALS_mimic_high_detect = DE_subgroups_CSF_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_mimic,pvalue_ALS_mimic,padj_ALS_mimic) %>%
+  add_DE_flag(lfc = "log2FC_ALS_mimic",padj = "padj_ALS_mimic",up = "ALS",down = "mimic",alpha = 0.1)
+
+volcano_ALS_mimic_CSF_high_detect = volcano_plot(DE_CSF_ALS_mimic_high_detect,"log2FC_ALS_mimic", 
+                                     title = "ALS vs mimic in CSF",
+                                     colors = c('mimic' = "#C25F3D", 
+                                                'ns' = 'lightgrey', 
+                                                'ALS'= "#3da0c2"),
+                                     add_x = 1.5,add_y = 0.1,fdr = 0.1)
 
 # -> CSF (adjusted)
 DE_CSF_ALS_mimic_adj = DE_subgroups_CSF_adj_final %>%
@@ -563,9 +847,17 @@ volcano_ALS_mimic_CSF_adj = volcano_plot(DE_CSF_ALS_mimic_adj,"log2FC_ALS_mimic"
                                                    'ALS'= "#3da0c2"),
                                         add_x = 1.1,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_mimic_CSF_adj_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_mimic_CSF_adj
-dev.off()
+# -> CSF (adjusted + high detect)
+DE_CSF_ALS_mimic_adj_high_detect = DE_subgroups_CSF_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_mimic,pvalue_ALS_mimic,padj_ALS_mimic) %>%
+  add_DE_flag(lfc = "log2FC_ALS_mimic",padj = "padj_ALS_mimic",up = "ALS",down = "mimic",alpha = 0.1)
+
+volcano_ALS_mimic_CSF_adj_high_detect = volcano_plot(DE_CSF_ALS_mimic_adj_high_detect,"log2FC_ALS_mimic", 
+                                         title = "ALS vs mimic in CSF (adjusted)",
+                                         colors = c('mimic' = "#C25F3D", 
+                                                    'ns' = 'lightgrey', 
+                                                    'ALS'= "#3da0c2"),
+                                         add_x = 1.1,add_y = 0.1,fdr = 0.1)
 
 # -> SERUM (not adjusted)
 DE_SERUM_ALS_mimic = DE_subgroups_SERUM_final %>%
@@ -579,9 +871,17 @@ volcano_ALS_mimic_SERUM = volcano_plot(DE_SERUM_ALS_mimic,"log2FC_ALS_mimic",
                                                  'ALS'= "#3da0c2"),
                                       add_x = 3,add_y = 0.3,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_mimic_SERUM_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_mimic_SERUM
-dev.off()
+# -> SERUM (not adjusted + high detect)
+DE_SERUM_ALS_mimic_high_detect = DE_subgroups_SERUM_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_mimic,pvalue_ALS_mimic,padj_ALS_mimic) %>%
+  add_DE_flag(lfc = "log2FC_ALS_mimic",padj = "padj_ALS_mimic",up = "ALS",down = "mimic",alpha = 0.1)
+
+volcano_ALS_mimic_SERUM_high_detect = volcano_plot(DE_SERUM_ALS_mimic_high_detect,"log2FC_ALS_mimic", 
+                                       title = "ALS vs mimic in SERUM",
+                                       colors = c('mimic' = "#C25F3D", 
+                                                  'ns' = 'lightgrey', 
+                                                  'ALS'= "#3da0c2"),
+                                       add_x = 3,add_y = 0.3,fdr = 0.1)
 
 # -> SERUM (adjusted)
 DE_SERUM_ALS_mimic_adj = DE_subgroups_SERUM_adj_final %>%
@@ -595,9 +895,17 @@ volcano_ALS_mimic_SERUM_adj = volcano_plot(DE_SERUM_ALS_mimic_adj,"log2FC_ALS_mi
                                                      'ALS'= "#3da0c2"),
                                           add_x = 2.1,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_ALS_mimic_SERUM_adj_FDR10.pdf",width = 8, height = 6)
-volcano_ALS_mimic_SERUM_adj
-dev.off()
+# -> SERUM (adjusted + high detect)
+DE_SERUM_ALS_mimic_adj_high_detect = DE_subgroups_SERUM_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_ALS_mimic,pvalue_ALS_mimic,padj_ALS_mimic) %>%
+  add_DE_flag(lfc = "log2FC_ALS_mimic",padj = "padj_ALS_mimic",up = "ALS",down = "mimic",alpha = 0.1)
+
+volcano_ALS_mimic_SERUM_adj_high_detect = volcano_plot(DE_SERUM_ALS_mimic_adj_high_detect,"log2FC_ALS_mimic", 
+                                           title = "ALS vs mimic in SERUM (adjusted)",
+                                           colors = c('mimic' = "#C25F3D", 
+                                                      'ns' = 'lightgrey', 
+                                                      'ALS'= "#3da0c2"),
+                                           add_x = 2.1,add_y = 0.1,fdr = 0.1)
 
 # -> all together
 pdf("plots/volcano_plots/volcano_ALS_mimic_all_FDR10.pdf", onefile = TRUE, width = 14, height = 15)
@@ -607,6 +915,15 @@ grid.arrange(volcano_ALS_mimic_plasma,
              volcano_ALS_mimic_SERUM_adj,
              volcano_ALS_mimic_CSF,
              volcano_ALS_mimic_CSF_adj,nrow = 3, ncol = 2)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_ALS_mimic_all_FDR10_high_detect.pdf", onefile = TRUE, width = 14, height = 15)
+grid.arrange(volcano_ALS_mimic_plasma_high_detect, 
+             volcano_ALS_mimic_plasma_adj_high_detect,
+             volcano_ALS_mimic_SERUM_high_detect,
+             volcano_ALS_mimic_SERUM_adj_high_detect,
+             volcano_ALS_mimic_CSF_high_detect,
+             volcano_ALS_mimic_CSF_adj_high_detect,nrow = 3, ncol = 2)
 dev.off()
 
 ## 4: mimic vs CTR 
@@ -622,9 +939,17 @@ volcano_mimic_CTR_plasma = volcano_plot(DE_plasma_mimic_CTR,"log2FC_mimic_CTR",
                                                  'mimic'= "#3da0c2"),
                                       add_x = 2.3,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_mimic_CTR_plasma_FDR10.pdf",width = 8, height = 6)
-volcano_mimic_CTR_plasma
-dev.off()
+# -> plasma (not adjusted + high detect)
+DE_plasma_mimic_CTR_high_detect = DE_subgroups_plasma_high_detect_final %>%
+  select(Target,UniProtID,log2FC_mimic_CTR,pvalue_mimic_CTR,padj_mimic_CTR) %>%
+  add_DE_flag(lfc = "log2FC_mimic_CTR",padj = "padj_mimic_CTR",up = "mimic",down = "CTR",alpha = 0.1)
+
+volcano_mimic_CTR_plasma_high_detect = volcano_plot(DE_plasma_mimic_CTR_high_detect,"log2FC_mimic_CTR", 
+                                        title = "mimic vs CTR in plasma",
+                                        colors = c('CTR' = "#C25F3D", 
+                                                   'ns' = 'lightgrey', 
+                                                   'mimic'= "#3da0c2"),
+                                        add_x = 2.3,add_y = 0.1,fdr = 0.1)
 
 # -> plasma (adjusted)
 DE_plasma_mimic_CTR_adj = DE_subgroups_plasma_adj_final %>%
@@ -638,9 +963,17 @@ volcano_mimic_CTR_plasma_adj = volcano_plot(DE_plasma_mimic_CTR_adj,"log2FC_mimi
                                                      'mimic'= "#3da0c2"),
                                           add_x = 1.1,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_mimic_CTR_plasma_adj_FDR10.pdf",width = 8, height = 6)
-volcano_mimic_CTR_plasma_adj
-dev.off()
+# -> plasma (adjusted + high detect)
+DE_plasma_mimic_CTR_adj_high_detect = DE_subgroups_plasma_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_mimic_CTR,pvalue_mimic_CTR,padj_mimic_CTR) %>%
+  add_DE_flag(lfc = "log2FC_mimic_CTR",padj = "padj_mimic_CTR",up = "mimic",down = "CTR",alpha = 0.1)
+
+volcano_mimic_CTR_plasma_adj_high_detect = volcano_plot(DE_plasma_mimic_CTR_adj_high_detect,"log2FC_mimic_CTR", 
+                                            title = "mimic vs CTR in plasma (adjusted)",
+                                            colors = c('CTR' = "#C25F3D", 
+                                                       'ns' = 'lightgrey', 
+                                                       'mimic'= "#3da0c2"),
+                                            add_x = 1.1,add_y = 0.1,fdr = 0.1)
 
 # -> CSF (not adjusted)
 DE_CSF_mimic_CTR = DE_subgroups_CSF_final %>%
@@ -654,9 +987,17 @@ volcano_mimic_CTR_CSF = volcano_plot(DE_CSF_mimic_CTR,"log2FC_mimic_CTR",
                                               'mimic'= "#3da0c2"),
                                    add_x = 3.4,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_mimic_CTR_CSF_FDR10.pdf",width = 8, height = 6)
-volcano_mimic_CTR_CSF
-dev.off()
+# -> CSF (not adjusted + high detect)
+DE_CSF_mimic_CTR_high_detect = DE_subgroups_CSF_high_detect_final %>%
+  select(Target,UniProtID,log2FC_mimic_CTR,pvalue_mimic_CTR,padj_mimic_CTR) %>%
+  add_DE_flag(lfc = "log2FC_mimic_CTR",padj = "padj_mimic_CTR",up = "mimic",down = "CTR",alpha = 0.1)
+
+volcano_mimic_CTR_CSF_high_detect = volcano_plot(DE_CSF_mimic_CTR_high_detect,"log2FC_mimic_CTR", 
+                                     title = "mimic vs CTR in CSF",
+                                     colors = c('CTR' = "#C25F3D", 
+                                                'ns' = 'lightgrey', 
+                                                'mimic'= "#3da0c2"),
+                                     add_x = 3.4,add_y = 0.1,fdr = 0.1)
 
 # -> CSF (adjusted)
 DE_CSF_mimic_CTR_adj = DE_subgroups_CSF_adj_final %>%
@@ -670,9 +1011,17 @@ volcano_mimic_CTR_CSF_adj = volcano_plot(DE_CSF_mimic_CTR_adj,"log2FC_mimic_CTR"
                                                   'mimic'= "#3da0c2"),
                                        add_x = 2.8,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_mimic_CTR_CSF_adj_FDR10.pdf",width = 8, height = 6)
-volcano_mimic_CTR_CSF_adj
-dev.off()
+# -> CSF (adjusted + high detect)
+DE_CSF_mimic_CTR_adj_high_detect = DE_subgroups_CSF_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_mimic_CTR,pvalue_mimic_CTR,padj_mimic_CTR) %>%
+  add_DE_flag(lfc = "log2FC_mimic_CTR",padj = "padj_mimic_CTR",up = "mimic",down = "CTR",alpha = 0.1)
+
+volcano_mimic_CTR_CSF_adj_high_detect = volcano_plot(DE_CSF_mimic_CTR_adj_high_detect,"log2FC_mimic_CTR", 
+                                         title = "mimic vs CTR in CSF (adjusted)",
+                                         colors = c('CTR' = "#C25F3D", 
+                                                    'ns' = 'lightgrey', 
+                                                    'mimic'= "#3da0c2"),
+                                         add_x = 2.8,add_y = 0.1,fdr = 0.1)
 
 # -> SERUM (not adjusted)
 DE_SERUM_mimic_CTR = DE_subgroups_SERUM_final %>%
@@ -686,9 +1035,17 @@ volcano_mimic_CTR_SERUM = volcano_plot(DE_SERUM_mimic_CTR,"log2FC_mimic_CTR",
                                                 'mimic'= "#3da0c2"),
                                      add_x = 2,add_y = 0.2,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_mimic_CTR_SERUM_FDR10.pdf",width = 8, height = 6)
-volcano_mimic_CTR_SERUM
-dev.off()
+# -> SERUM (not adjusted + high detect)
+DE_SERUM_mimic_CTR_high_detect = DE_subgroups_SERUM_high_detect_final %>%
+  select(Target,UniProtID,log2FC_mimic_CTR,pvalue_mimic_CTR,padj_mimic_CTR) %>%
+  add_DE_flag(lfc = "log2FC_mimic_CTR",padj = "padj_mimic_CTR",up = "mimic",down = "CTR",alpha = 0.1)
+
+volcano_mimic_CTR_SERUM_high_detect = volcano_plot(DE_SERUM_mimic_CTR_high_detect,"log2FC_mimic_CTR", 
+                                       title = "mimic vs CTR in SERUM",
+                                       colors = c('CTR' = "#C25F3D", 
+                                                  'ns' = 'lightgrey', 
+                                                  'mimic'= "#3da0c2"),
+                                       add_x = 2,add_y = 0.2,fdr = 0.1)
 
 # -> SERUM (adjusted)
 DE_SERUM_mimic_CTR_adj = DE_subgroups_SERUM_adj_final %>%
@@ -702,9 +1059,17 @@ volcano_mimic_CTR_SERUM_adj = volcano_plot(DE_SERUM_mimic_CTR_adj,"log2FC_mimic_
                                                     'mimic'= "#3da0c2"),
                                          add_x = 1.2,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_mimic_CTR_SERUM_adj_FDR10.pdf",width = 8, height = 6)
-volcano_mimic_CTR_SERUM_adj
-dev.off()
+# -> SERUM (adjusted + high detect)
+DE_SERUM_mimic_CTR_adj_high_detect = DE_subgroups_SERUM_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_mimic_CTR,pvalue_mimic_CTR,padj_mimic_CTR) %>%
+  add_DE_flag(lfc = "log2FC_mimic_CTR",padj = "padj_mimic_CTR",up = "mimic",down = "CTR",alpha = 0.1)
+
+volcano_mimic_CTR_SERUM_adj_high_detect = volcano_plot(DE_SERUM_mimic_CTR_adj_high_detect,"log2FC_mimic_CTR", 
+                                           title = "mimic vs CTR in SERUM (adjusted)",
+                                           colors = c('CTR' = "#C25F3D", 
+                                                      'ns' = 'lightgrey', 
+                                                      'mimic'= "#3da0c2"),
+                                           add_x = 1.2,add_y = 0.1,fdr = 0.1)
 
 # -> all together
 pdf("plots/volcano_plots/volcano_mimic_CTR_all_FDR10.pdf", onefile = TRUE, width = 14, height = 15)
@@ -714,6 +1079,15 @@ grid.arrange(volcano_mimic_CTR_plasma,
              volcano_mimic_CTR_SERUM_adj,
              volcano_mimic_CTR_CSF,
              volcano_mimic_CTR_CSF_adj,nrow = 3, ncol = 2)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_mimic_CTR_all_FDR10_high_detect.pdf", onefile = TRUE, width = 14, height = 15)
+grid.arrange(volcano_mimic_CTR_plasma_high_detect, 
+             volcano_mimic_CTR_plasma_adj_high_detect,
+             volcano_mimic_CTR_SERUM_high_detect,
+             volcano_mimic_CTR_SERUM_adj_high_detect,
+             volcano_mimic_CTR_CSF_high_detect,
+             volcano_mimic_CTR_CSF_adj_high_detect,nrow = 3, ncol = 2)
 dev.off()
 
 ## 5: PGMC vs CTR 
@@ -731,9 +1105,19 @@ volcano_PGMC_CTR_plasma = volcano_plot(DE_plasma_PGMC_CTR,"log2FC_PGMC_CTR",
                                        label_targets = c("MAPT","NEFH","pTau-217","TAFA5",
                                                          "IL7","SOD1","HTT"),fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_PGMC_CTR_plasma_FDR10.pdf",width = 8, height = 6)
-volcano_PGMC_CTR_plasma
-dev.off()
+# -> plasma (not adjusted + high detect)
+DE_plasma_PGMC_CTR_high_detect = DE_subgroups_plasma_high_detect_final %>%
+  select(Target,UniProtID,log2FC_PGMC_CTR,pvalue_PGMC_CTR,padj_PGMC_CTR) %>%
+  add_DE_flag(lfc = "log2FC_PGMC_CTR",padj = "padj_PGMC_CTR",up = "PGMC",down = "CTR",alpha = 0.1)
+
+volcano_PGMC_CTR_plasma_high_detect = volcano_plot(DE_plasma_PGMC_CTR_high_detect,"log2FC_PGMC_CTR", 
+                                       title = "PGMC vs CTR in plasma",
+                                       colors = c('CTR' = "#C25F3D", 
+                                                  'ns' = 'lightgrey', 
+                                                  'PGMC'= "#3da0c2"),
+                                       add_x = 1.2,add_y = 0.1,
+                                       label_targets = c("MAPT","NEFH","pTau-217","TAFA5",
+                                                         "IL7","SOD1","HTT"),fdr = 0.1)
 
 # -> plasma (adjusted)
 DE_plasma_PGMC_CTR_adj = DE_subgroups_plasma_adj_final %>%
@@ -749,9 +1133,20 @@ volcano_PGMC_CTR_plasma_adj = volcano_plot(DE_plasma_PGMC_CTR_adj,"log2FC_PGMC_C
                                            label_targets = c("MAPT","NEFH","pTau-217","TAFA5",
                                                              "IL7","SOD1","HTT"),fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_PGMC_CTR_plasma_adj_FDR10.pdf",width = 8, height = 6)
-volcano_PGMC_CTR_plasma_adj
-dev.off()
+# -> plasma (adjusted + high detect)
+DE_plasma_PGMC_CTR_adj_high_detect = DE_subgroups_plasma_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_PGMC_CTR,pvalue_PGMC_CTR,padj_PGMC_CTR) %>%
+  add_DE_flag(lfc = "log2FC_PGMC_CTR",padj = "padj_PGMC_CTR",up = "PGMC",down = "CTR",alpha = 0.1)
+
+volcano_PGMC_CTR_plasma_adj_high_detect = volcano_plot(DE_plasma_PGMC_CTR_adj_high_detect,"log2FC_PGMC_CTR", 
+                                           title = "PGMC vs CTR in plasma (adjusted)",
+                                           colors = c('CTR' = "#C25F3D", 
+                                                      'ns' = 'lightgrey', 
+                                                      'PGMC'= "#3da0c2"),
+                                           add_x = 1.5,add_y = 0.1,
+                                           label_targets = c("MAPT","NEFH","pTau-217","TAFA5",
+                                                             "IL7","SOD1","HTT"),fdr = 0.1)
+
 
 # -> CSF (not adjusted)
 DE_CSF_PGMC_CTR = DE_subgroups_CSF_final %>%
@@ -767,9 +1162,19 @@ volcano_PGMC_CTR_CSF = volcano_plot(DE_CSF_PGMC_CTR,"log2FC_PGMC_CTR",
                                     label_targets = c("MAPT","NEFH","pTau-217","TAFA5",
                                                       "IL7","SOD1","HTT"),fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_PGMC_CTR_CSF_FDR10.pdf",width = 8, height = 6)
-volcano_PGMC_CTR_CSF
-dev.off()
+# -> CSF (not adjusted + high detect)
+DE_CSF_PGMC_CTR_high_detect = DE_subgroups_CSF_high_detect_final %>%
+  select(Target,UniProtID,log2FC_PGMC_CTR,pvalue_PGMC_CTR,padj_PGMC_CTR) %>%
+  add_DE_flag(lfc = "log2FC_PGMC_CTR",padj = "padj_PGMC_CTR",up = "PGMC",down = "CTR",alpha = 0.1)
+
+volcano_PGMC_CTR_CSF_high_detect = volcano_plot(DE_CSF_PGMC_CTR_high_detect,"log2FC_PGMC_CTR", 
+                                    title = "PGMC vs CTR in CSF",
+                                    colors = c('CTR' = "#C25F3D", 
+                                               'ns' = 'lightgrey', 
+                                               'PGMC'= "#3da0c2"),
+                                    add_x = 1,add_y = 0.1,
+                                    label_targets = c("MAPT","NEFH","pTau-217","TAFA5",
+                                                      "IL7","SOD1","HTT"),fdr = 0.1)
 
 # -> CSF (adjusted)
 DE_CSF_PGMC_CTR_adj = DE_subgroups_CSF_adj_final %>%
@@ -785,9 +1190,19 @@ volcano_PGMC_CTR_CSF_adj = volcano_plot(DE_CSF_PGMC_CTR_adj,"log2FC_PGMC_CTR",
                                         label_targets = c("MAPT","NEFH","pTau-217","TAFA5",
                                                           "IL7","SOD1","HTT"),fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_PGMC_CTR_CSF_adj_FDR10.pdf",width = 8, height = 6)
-volcano_PGMC_CTR_CSF_adj
-dev.off()
+# -> CSF (adjusted + high detect)
+DE_CSF_PGMC_CTR_adj_high_detect = DE_subgroups_CSF_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_PGMC_CTR,pvalue_PGMC_CTR,padj_PGMC_CTR) %>%
+  add_DE_flag(lfc = "log2FC_PGMC_CTR",padj = "padj_PGMC_CTR",up = "PGMC",down = "CTR",alpha = 0.1)
+
+volcano_PGMC_CTR_CSF_adj_high_detect = volcano_plot(DE_CSF_PGMC_CTR_adj_high_detect,"log2FC_PGMC_CTR", 
+                                        title = "PGMC vs CTR in CSF (adjusted)",
+                                        colors = c('CTR' = "#C25F3D", 
+                                                   'ns' = 'lightgrey', 
+                                                   'PGMC'= "#3da0c2"),
+                                        add_x = 1.3,add_y = 0.1,
+                                        label_targets = c("MAPT","NEFH","pTau-217","TAFA5",
+                                                          "IL7","SOD1","HTT"),fdr = 0.1)
 
 # -> SERUM (not adjusted)
 DE_SERUM_PGMC_CTR = DE_subgroups_SERUM_final %>%
@@ -803,9 +1218,20 @@ volcano_PGMC_CTR_SERUM = volcano_plot(DE_SERUM_PGMC_CTR,"log2FC_PGMC_CTR",
                                       label_targets = c("MAPT","NEFH","pTau-217","TAFA5",
                                                         "IL7","SOD1","HTT"),fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_PGMC_CTR_SERUM_FDR10.pdf",width = 8, height = 6)
-volcano_PGMC_CTR_SERUM
-dev.off()
+# -> SERUM (not adjusted + high detect)
+DE_SERUM_PGMC_CTR_high_detect = DE_subgroups_SERUM_high_detect_final %>%
+  select(Target,UniProtID,log2FC_PGMC_CTR,pvalue_PGMC_CTR,padj_PGMC_CTR) %>%
+  add_DE_flag(lfc = "log2FC_PGMC_CTR",padj = "padj_PGMC_CTR",up = "PGMC",down = "CTR",alpha = 0.1)
+
+volcano_PGMC_CTR_SERUM_high_detect = volcano_plot(DE_SERUM_PGMC_CTR_high_detect,"log2FC_PGMC_CTR", 
+                                      title = "PGMC vs CTR in SERUM",
+                                      colors = c('CTR' = "#C25F3D", 
+                                                 'ns' = 'lightgrey', 
+                                                 'PGMC'= "#3da0c2"),
+                                      add_x = 0.7,add_y = 0.1,
+                                      label_targets = c("MAPT","NEFH","pTau-217","TAFA5",
+                                                        "IL7","SOD1","HTT"),fdr = 0.1)
+
 
 # -> SERUM (adjusted)
 DE_SERUM_PGMC_CTR_adj = DE_subgroups_SERUM_adj_final %>%
@@ -821,9 +1247,20 @@ volcano_PGMC_CTR_SERUM_adj = volcano_plot(DE_SERUM_PGMC_CTR_adj,"log2FC_PGMC_CTR
                                           label_targets = c("MAPT","NEFH","pTau-217","TAFA5",
                                                             "IL7","SOD1","HTT"),fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_PGMC_CTR_SERUM_adj_FDR10.pdf",width = 8, height = 6)
-volcano_PGMC_CTR_SERUM_adj
-dev.off()
+# -> SERUM (adjusted + high detect)
+DE_SERUM_PGMC_CTR_adj_high_detect = DE_subgroups_SERUM_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_PGMC_CTR,pvalue_PGMC_CTR,padj_PGMC_CTR) %>%
+  add_DE_flag(lfc = "log2FC_PGMC_CTR",padj = "padj_PGMC_CTR",up = "PGMC",down = "CTR",alpha = 0.1)
+
+volcano_PGMC_CTR_SERUM_adj_high_detect = volcano_plot(DE_SERUM_PGMC_CTR_adj_high_detect,"log2FC_PGMC_CTR", 
+                                          title = "PGMC vs CTR in SERUM (adjusted)",
+                                          colors = c('CTR' = "#C25F3D", 
+                                                     'ns' = 'lightgrey', 
+                                                     'PGMC'= "#3da0c2"),
+                                          add_x = 1,add_y = 0.1,
+                                          label_targets = c("MAPT","NEFH","pTau-217","TAFA5",
+                                                            "IL7","SOD1","HTT"),fdr = 0.1)
+
 
 # -> all together
 pdf("plots/volcano_plots/volcano_PGMC_CTR_all_FDR10.pdf", onefile = TRUE, width = 14, height = 15)
@@ -833,6 +1270,15 @@ grid.arrange(volcano_PGMC_CTR_plasma,
              volcano_PGMC_CTR_SERUM_adj,
              volcano_PGMC_CTR_CSF,
              volcano_PGMC_CTR_CSF_adj,nrow = 3, ncol = 2)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_PGMC_CTR_all_FDR10_high_detect.pdf", onefile = TRUE, width = 14, height = 15)
+grid.arrange(volcano_PGMC_CTR_plasma_high_detect, 
+             volcano_PGMC_CTR_plasma_adj_high_detect,
+             volcano_PGMC_CTR_SERUM_high_detect,
+             volcano_PGMC_CTR_SERUM_adj_high_detect,
+             volcano_PGMC_CTR_CSF_high_detect,
+             volcano_PGMC_CTR_CSF_adj_high_detect,nrow = 3, ncol = 2)
 dev.off()
 
 ## 6: PGMC vs mimic 
@@ -848,9 +1294,17 @@ volcano_PGMC_mimic_plasma = volcano_plot(DE_plasma_PGMC_mimic,"log2FC_PGMC_mimic
                                                   'PGMC'= "#3da0c2"),
                                        add_x = 0.8,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_PGMC_mimic_plasma_FDR10.pdf",width = 8, height = 6)
-volcano_PGMC_mimic_plasma
-dev.off()
+# -> plasma (not adjusted + high detect)
+DE_plasma_PGMC_mimic_high_detect = DE_subgroups_plasma_high_detect_final %>%
+  select(Target,UniProtID,log2FC_PGMC_mimic,pvalue_PGMC_mimic,padj_PGMC_mimic) %>%
+  add_DE_flag(lfc = "log2FC_PGMC_mimic",padj = "padj_PGMC_mimic",up = "PGMC",down = "mimic",alpha = 0.1)
+
+volcano_PGMC_mimic_plasma_high_detect = volcano_plot(DE_plasma_PGMC_mimic_high_detect,"log2FC_PGMC_mimic", 
+                                         title = "PGMC vs mimic in plasma",
+                                         colors = c('mimic' = "#C25F3D", 
+                                                    'ns' = 'lightgrey', 
+                                                    'PGMC'= "#3da0c2"),
+                                         add_x = 0.8,add_y = 0.1,fdr = 0.1)
 
 # -> plasma (adjusted)
 DE_plasma_PGMC_mimic_adj = DE_subgroups_plasma_adj_final %>%
@@ -864,9 +1318,17 @@ volcano_PGMC_mimic_plasma_adj = volcano_plot(DE_plasma_PGMC_mimic_adj,"log2FC_PG
                                                       'PGMC'= "#3da0c2"),
                                            add_x = 1,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_PGMC_mimic_plasma_adj_FDR10.pdf",width = 8, height = 6)
-volcano_PGMC_mimic_plasma_adj
-dev.off()
+# -> plasma (adjusted + high detect)
+DE_plasma_PGMC_mimic_adj_high_detect = DE_subgroups_plasma_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_PGMC_mimic,pvalue_PGMC_mimic,padj_PGMC_mimic) %>%
+  add_DE_flag(lfc = "log2FC_PGMC_mimic",padj = "padj_PGMC_mimic",up = "PGMC",down = "mimic",alpha = 0.1)
+
+volcano_PGMC_mimic_plasma_adj_high_detect = volcano_plot(DE_plasma_PGMC_mimic_adj_high_detect,"log2FC_PGMC_mimic", 
+                                             title = "PGMC vs mimic in plasma (adjusted)",
+                                             colors = c('mimic' = "#C25F3D", 
+                                                        'ns' = 'lightgrey', 
+                                                        'PGMC'= "#3da0c2"),
+                                             add_x = 1,add_y = 0.1,fdr = 0.1)
 
 # -> CSF (not adjusted)
 DE_CSF_PGMC_mimic = DE_subgroups_CSF_final %>%
@@ -880,9 +1342,17 @@ volcano_PGMC_mimic_CSF = volcano_plot(DE_CSF_PGMC_mimic,"log2FC_PGMC_mimic",
                                                'PGMC'= "#3da0c2"),
                                     add_x = -2.5,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_PGMC_mimic_CSF_FDR10.pdf",width = 8, height = 6)
-volcano_PGMC_mimic_CSF
-dev.off()
+# -> CSF (not adjusted + high detect)
+DE_CSF_PGMC_mimic_high_detect = DE_subgroups_CSF_high_detect_final %>%
+  select(Target,UniProtID,log2FC_PGMC_mimic,pvalue_PGMC_mimic,padj_PGMC_mimic) %>%
+  add_DE_flag(lfc = "log2FC_PGMC_mimic",padj = "padj_PGMC_mimic",up = "PGMC",down = "mimic",alpha = 0.1)
+
+volcano_PGMC_mimic_CSF_high_detect = volcano_plot(DE_CSF_PGMC_mimic_high_detect,"log2FC_PGMC_mimic", 
+                                      title = "PGMC vs mimic in CSF",
+                                      colors = c('mimic' = "#C25F3D", 
+                                                 'ns' = 'lightgrey', 
+                                                 'PGMC'= "#3da0c2"),
+                                      add_x = -2.5,add_y = 0.1,fdr = 0.1)
 
 # -> CSF (adjusted)
 DE_CSF_PGMC_mimic_adj = DE_subgroups_CSF_adj_final %>%
@@ -896,9 +1366,17 @@ volcano_PGMC_mimic_CSF_adj = volcano_plot(DE_CSF_PGMC_mimic_adj,"log2FC_PGMC_mim
                                                    'PGMC'= "#3da0c2"),
                                         add_x = -2.5,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_PGMC_mimic_CSF_adj_FDR10.pdf",width = 8, height = 6)
-volcano_PGMC_mimic_CSF_adj
-dev.off()
+# -> CSF (adjusted + high detect)
+DE_CSF_PGMC_mimic_adj_high_detect = DE_subgroups_CSF_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_PGMC_mimic,pvalue_PGMC_mimic,padj_PGMC_mimic) %>%
+  add_DE_flag(lfc = "log2FC_PGMC_mimic",padj = "padj_PGMC_mimic",up = "PGMC",down = "mimic",alpha = 0.1)
+
+volcano_PGMC_mimic_CSF_adj_high_detect = volcano_plot(DE_CSF_PGMC_mimic_adj_high_detect,"log2FC_PGMC_mimic", 
+                                          title = "PGMC vs mimic in CSF (adjusted)",
+                                          colors = c('mimic' = "#C25F3D", 
+                                                     'ns' = 'lightgrey', 
+                                                     'PGMC'= "#3da0c2"),
+                                          add_x = -2.5,add_y = 0.1,fdr = 0.1)
 
 # -> SERUM (not adjusted)
 DE_SERUM_PGMC_mimic = DE_subgroups_SERUM_final %>%
@@ -912,9 +1390,17 @@ volcano_PGMC_mimic_SERUM = volcano_plot(DE_SERUM_PGMC_mimic,"log2FC_PGMC_mimic",
                                                  'PGMC'= "#3da0c2"),
                                       add_x = 0.7,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_PGMC_mimic_SERUM_FDR10.pdf",width = 8, height = 6)
-volcano_PGMC_mimic_SERUM
-dev.off()
+# -> SERUM (not adjusted + high detect)
+DE_SERUM_PGMC_mimic_high_detect  = DE_subgroups_SERUM_high_detect_final %>%
+  select(Target,UniProtID,log2FC_PGMC_mimic,pvalue_PGMC_mimic,padj_PGMC_mimic) %>%
+  add_DE_flag(lfc = "log2FC_PGMC_mimic",padj = "padj_PGMC_mimic",up = "PGMC",down = "mimic",alpha = 0.1)
+
+volcano_PGMC_mimic_SERUM_high_detect = volcano_plot(DE_SERUM_PGMC_mimic_high_detect,"log2FC_PGMC_mimic", 
+                                        title = "PGMC vs mimic in SERUM",
+                                        colors = c('mimic' = "#C25F3D", 
+                                                   'ns' = 'lightgrey', 
+                                                   'PGMC'= "#3da0c2"),
+                                        add_x = 0.7,add_y = 0.1,fdr = 0.1)
 
 # -> SERUM (adjusted)
 DE_SERUM_PGMC_mimic_adj = DE_subgroups_SERUM_adj_final %>%
@@ -928,9 +1414,17 @@ volcano_PGMC_mimic_SERUM_adj = volcano_plot(DE_SERUM_PGMC_mimic_adj,"log2FC_PGMC
                                                      'PGMC'= "#3da0c2"),
                                           add_x = 1,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_PGMC_mimic_SERUM_adj_FDR10.pdf",width = 8, height = 6)
-volcano_PGMC_mimic_SERUM_adj
-dev.off()
+# -> SERUM (adjusted + high detect)
+DE_SERUM_PGMC_mimic_adj_high_detect = DE_subgroups_SERUM_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_PGMC_mimic,pvalue_PGMC_mimic,padj_PGMC_mimic) %>%
+  add_DE_flag(lfc = "log2FC_PGMC_mimic",padj = "padj_PGMC_mimic",up = "PGMC",down = "mimic",alpha = 0.1)
+
+volcano_PGMC_mimic_SERUM_adj_high_detect = volcano_plot(DE_SERUM_PGMC_mimic_adj_high_detect,"log2FC_PGMC_mimic", 
+                                            title = "PGMC vs mimic in SERUM (adjusted)",
+                                            colors = c('mimic' = "#C25F3D", 
+                                                       'ns' = 'lightgrey', 
+                                                       'PGMC'= "#3da0c2"),
+                                            add_x = 1,add_y = 0.1,fdr = 0.1)
 
 # -> all together
 pdf("plots/volcano_plots/volcano_PGMC_mimic_all_FDR10.pdf", onefile = TRUE, width = 14, height = 15)
@@ -940,6 +1434,15 @@ grid.arrange(volcano_PGMC_mimic_plasma,
              volcano_PGMC_mimic_SERUM_adj,
              volcano_PGMC_mimic_CSF,
              volcano_PGMC_mimic_CSF_adj,nrow = 3, ncol = 2)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_PGMC_mimic_all_FDR10_high_detect.pdf", onefile = TRUE, width = 14, height = 15)
+grid.arrange(volcano_PGMC_mimic_plasma_high_detect, 
+             volcano_PGMC_mimic_plasma_adj_high_detect,
+             volcano_PGMC_mimic_SERUM_high_detect,
+             volcano_PGMC_mimic_SERUM_adj_high_detect,
+             volcano_PGMC_mimic_CSF_high_detect,
+             volcano_PGMC_mimic_CSF_adj_high_detect,nrow = 3, ncol = 2)
 dev.off()
 
 ## 7: C9orf72 vs CTR 
@@ -955,9 +1458,17 @@ volcano_C9orf72_CTR_plasma = volcano_plot(DE_plasma_C9orf72_CTR,"log2FC_C9orf72_
                                                    'C9orf72'= "#3da0c2"),
                                         add_x = 2.3,add_y = -0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_C9orf72_CTR_plasma_FDR10.pdf",width = 8, height = 6)
-volcano_C9orf72_CTR_plasma
-dev.off()
+# -> plasma (not adjusted + high detect)
+DE_plasma_C9orf72_CTR_high_detect = DE_PGMC_subgroups_plasma_high_detect_final %>%
+  select(Target,UniProtID,log2FC_C9orf72_CTR,pvalue_C9orf72_CTR,padj_C9orf72_CTR) %>%
+  add_DE_flag(lfc = "log2FC_C9orf72_CTR",padj = "padj_C9orf72_CTR",up = "C9orf72",down = "CTR",alpha = 0.1)
+
+volcano_C9orf72_CTR_plasma_high_detect = volcano_plot(DE_plasma_C9orf72_CTR_high_detect,"log2FC_C9orf72_CTR", 
+                                          title = "C9orf72 vs CTR in plasma",
+                                          colors = c('CTR' = "#C25F3D", 
+                                                     'ns' = 'lightgrey', 
+                                                     'C9orf72'= "#3da0c2"),
+                                          add_x = 2.3,add_y = -0.1,fdr = 0.1)
 
 # -> plasma (adjusted)
 DE_plasma_C9orf72_CTR_adj = DE_PGMC_subgroups_plasma_adj_final %>%
@@ -971,9 +1482,17 @@ volcano_C9orf72_CTR_plasma_adj = volcano_plot(DE_plasma_C9orf72_CTR_adj,"log2FC_
                                                        'C9orf72'= "#3da0c2"),
                                             add_x = 2.5,add_y = -0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_C9orf72_CTR_plasma_adj_FDR10.pdf",width = 8, height = 6)
-volcano_C9orf72_CTR_plasma_adj
-dev.off()
+# -> plasma (adjusted+high detect)
+DE_plasma_C9orf72_CTR_adj_high_detect = DE_PGMC_subgroups_plasma_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_C9orf72_CTR,pvalue_C9orf72_CTR,padj_C9orf72_CTR) %>%
+  add_DE_flag(lfc = "log2FC_C9orf72_CTR",padj = "padj_C9orf72_CTR",up = "C9orf72",down = "CTR",alpha = 0.1)
+
+volcano_C9orf72_CTR_plasma_adj_high_detect = volcano_plot(DE_plasma_C9orf72_CTR_adj_high_detect,"log2FC_C9orf72_CTR", 
+                                              title = "C9orf72 vs CTR in plasma (adjusted)",
+                                              colors = c('CTR' = "#C25F3D", 
+                                                         'ns' = 'lightgrey', 
+                                                         'C9orf72'= "#3da0c2"),
+                                              add_x = 2.5,add_y = -0.1,fdr = 0.1)
 
 # -> CSF (not adjusted)
 DE_CSF_C9orf72_CTR = DE_PGMC_subgroups_CSF_final %>%
@@ -987,9 +1506,18 @@ volcano_C9orf72_CTR_CSF = volcano_plot(DE_CSF_C9orf72_CTR,"log2FC_C9orf72_CTR",
                                                 'C9orf72'= "#3da0c2"),
                                      add_x = 2,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_C9orf72_CTR_CSF_FDR10.pdf",width = 8, height = 6)
-volcano_C9orf72_CTR_CSF
-dev.off()
+# -> CSF (not adjusted + high detect)
+DE_CSF_C9orf72_CTR_high_detect = DE_PGMC_subgroups_CSF_high_detect_final %>%
+  select(Target,UniProtID,log2FC_C9orf72_CTR,pvalue_C9orf72_CTR,padj_C9orf72_CTR) %>%
+  add_DE_flag(lfc = "log2FC_C9orf72_CTR",padj = "padj_C9orf72_CTR",up = "C9orf72",down = "CTR",alpha = 0.1)
+
+volcano_C9orf72_CTR_CSF_high_detect = volcano_plot(DE_CSF_C9orf72_CTR_high_detect,"log2FC_C9orf72_CTR", 
+                                       title = "C9orf72 vs CTR in CSF",
+                                       colors = c('CTR' = "#C25F3D", 
+                                                  'ns' = 'lightgrey', 
+                                                  'C9orf72'= "#3da0c2"),
+                                       add_x = 2,add_y = 0.1,fdr = 0.1)
+
 
 # -> CSF (adjusted)
 DE_CSF_C9orf72_CTR_adj = DE_PGMC_subgroups_CSF_adj_final %>%
@@ -1003,9 +1531,17 @@ volcano_C9orf72_CTR_CSF_adj = volcano_plot(DE_CSF_C9orf72_CTR_adj,"log2FC_C9orf7
                                                     'C9orf72'= "#3da0c2"),
                                          add_x = 2,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_C9orf72_CTR_CSF_adj_FDR10.pdf",width = 8, height = 6)
-volcano_C9orf72_CTR_CSF_adj
-dev.off()
+# -> CSF (adjusted + high detect)
+DE_CSF_C9orf72_CTR_adj_high_detect = DE_PGMC_subgroups_CSF_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_C9orf72_CTR,pvalue_C9orf72_CTR,padj_C9orf72_CTR) %>%
+  add_DE_flag(lfc = "log2FC_C9orf72_CTR",padj = "padj_C9orf72_CTR",up = "C9orf72",down = "CTR",alpha = 0.1)
+
+volcano_C9orf72_CTR_CSF_adj_high_detect = volcano_plot(DE_CSF_C9orf72_CTR_adj_high_detect,"log2FC_C9orf72_CTR", 
+                                           title = "C9orf72 vs CTR in CSF (adjusted)",
+                                           colors = c('CTR' = "#C25F3D", 
+                                                      'ns' = 'lightgrey', 
+                                                      'C9orf72'= "#3da0c2"),
+                                           add_x = 2,add_y = 0.1,fdr = 0.1)
 
 # -> SERUM (not adjusted)
 DE_SERUM_C9orf72_CTR = DE_PGMC_subgroups_SERUM_final %>%
@@ -1019,9 +1555,17 @@ volcano_C9orf72_CTR_SERUM = volcano_plot(DE_SERUM_C9orf72_CTR,"log2FC_C9orf72_CT
                                                   'C9orf72'= "#3da0c2"),
                                        add_x = 2,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_C9orf72_CTR_SERUM_FDR10.pdf",width = 8, height = 6)
-volcano_C9orf72_CTR_SERUM
-dev.off()
+# -> SERUM (not adjusted + high detect)
+DE_SERUM_C9orf72_CTR_high_detect = DE_PGMC_subgroups_SERUM_high_detect_final %>%
+  select(Target,UniProtID,log2FC_C9orf72_CTR,pvalue_C9orf72_CTR,padj_C9orf72_CTR) %>%
+  add_DE_flag(lfc = "log2FC_C9orf72_CTR",padj = "padj_C9orf72_CTR",up = "C9orf72",down = "CTR",alpha = 0.1)
+
+volcano_C9orf72_CTR_SERUM_high_detect = volcano_plot(DE_SERUM_C9orf72_CTR_high_detect,"log2FC_C9orf72_CTR", 
+                                         title = "C9orf72 vs CTR in SERUM",
+                                         colors = c('CTR' = "#C25F3D", 
+                                                    'ns' = 'lightgrey', 
+                                                    'C9orf72'= "#3da0c2"),
+                                         add_x = 2,add_y = 0.1,fdr = 0.1)
 
 # -> SERUM (adjusted)
 DE_SERUM_C9orf72_CTR_adj = DE_PGMC_subgroups_SERUM_adj_final %>%
@@ -1035,9 +1579,17 @@ volcano_C9orf72_CTR_SERUM_adj = volcano_plot(DE_SERUM_C9orf72_CTR_adj,"log2FC_C9
                                                       'C9orf72'= "#3da0c2"),
                                            add_x = 2.8,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_C9orf72_CTR_SERUM_adj_FDR10.pdf",width = 8, height = 6)
-volcano_C9orf72_CTR_SERUM_adj
-dev.off()
+# -> SERUM (adjusted + high detect)
+DE_SERUM_C9orf72_CTR_adj_high_detect = DE_PGMC_subgroups_SERUM_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_C9orf72_CTR,pvalue_C9orf72_CTR,padj_C9orf72_CTR) %>%
+  add_DE_flag(lfc = "log2FC_C9orf72_CTR",padj = "padj_C9orf72_CTR",up = "C9orf72",down = "CTR",alpha = 0.1)
+
+volcano_C9orf72_CTR_SERUM_adj_high_detect = volcano_plot(DE_SERUM_C9orf72_CTR_adj_high_detect,"log2FC_C9orf72_CTR", 
+                                             title = "C9orf72 vs CTR in SERUM (adjusted)",
+                                             colors = c('CTR' = "#C25F3D", 
+                                                        'ns' = 'lightgrey', 
+                                                        'C9orf72'= "#3da0c2"),
+                                             add_x = 2.8,add_y = 0.1,fdr = 0.1)
 
 # -> all together
 pdf("plots/volcano_plots/volcano_C9orf72_CTR_all_FDR10.pdf", onefile = TRUE, width = 14, height = 15)
@@ -1047,6 +1599,15 @@ grid.arrange(volcano_C9orf72_CTR_plasma,
              volcano_C9orf72_CTR_SERUM_adj,
              volcano_C9orf72_CTR_CSF,
              volcano_C9orf72_CTR_CSF_adj,nrow = 3, ncol = 2)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_C9orf72_CTR_all_FDR10_high_detect.pdf", onefile = TRUE, width = 14, height = 15)
+grid.arrange(volcano_C9orf72_CTR_plasma_high_detect, 
+             volcano_C9orf72_CTR_plasma_adj_high_detect,
+             volcano_C9orf72_CTR_SERUM_high_detect,
+             volcano_C9orf72_CTR_SERUM_adj_high_detect,
+             volcano_C9orf72_CTR_CSF_high_detect,
+             volcano_C9orf72_CTR_CSF_adj_high_detect,nrow = 3, ncol = 2)
 dev.off()
 
 ## 8: SOD1 vs CTR 
@@ -1062,9 +1623,17 @@ volcano_SOD1_CTR_plasma = volcano_plot(DE_plasma_SOD1_CTR,"log2FC_SOD1_CTR",
                                                      'SOD1'= "#3da0c2"),
                                           add_x = 1,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_SOD1_CTR_plasma_FDR10.pdf",width = 8, height = 6)
-volcano_SOD1_CTR_plasma
-dev.off()
+# -> plasma (not adjusted + high detect)
+DE_plasma_SOD1_CTR_high_detect = DE_PGMC_subgroups_plasma_high_detect_final %>%
+  select(Target,UniProtID,log2FC_SOD1_CTR,pvalue_SOD1_CTR,padj_SOD1_CTR) %>%
+  add_DE_flag(lfc = "log2FC_SOD1_CTR",padj = "padj_SOD1_CTR",up = "SOD1",down = "CTR",alpha = 0.1)
+
+volcano_SOD1_CTR_plasma_high_detect = volcano_plot(DE_plasma_SOD1_CTR_high_detect,"log2FC_SOD1_CTR", 
+                                       title = "SOD1 vs CTR in plasma",
+                                       colors = c('CTR' = "#C25F3D", 
+                                                  'ns' = 'lightgrey', 
+                                                  'SOD1'= "#3da0c2"),
+                                       add_x = 1,add_y = 0.1,fdr = 0.1)
 
 # -> plasma (adjusted)
 DE_plasma_SOD1_CTR_adj = DE_PGMC_subgroups_plasma_adj_final %>%
@@ -1072,15 +1641,23 @@ DE_plasma_SOD1_CTR_adj = DE_PGMC_subgroups_plasma_adj_final %>%
   add_DE_flag(lfc = "log2FC_SOD1_CTR",padj = "padj_SOD1_CTR",up = "SOD1",down = "CTR",alpha = 0.1)
 
 volcano_SOD1_CTR_plasma_adj = volcano_plot(DE_plasma_SOD1_CTR_adj,"log2FC_SOD1_CTR", 
+                                                       title = "SOD1 vs CTR in plasma (adjusted)",
+                                                       colors = c('CTR' = "#C25F3D", 
+                                                                  'ns' = 'lightgrey', 
+                                                                  'SOD1'= "#3da0c2"),
+                                                       add_x = 1.2,add_y = 0.1,fdr = 0.1)
+
+# -> plasma (adjusted + high detect)
+DE_plasma_SOD1_CTR_adj_high_detect = DE_PGMC_subgroups_plasma_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_SOD1_CTR,pvalue_SOD1_CTR,padj_SOD1_CTR) %>%
+  add_DE_flag(lfc = "log2FC_SOD1_CTR",padj = "padj_SOD1_CTR",up = "SOD1",down = "CTR",alpha = 0.1)
+
+volcano_SOD1_CTR_plasma_adj_high_detect = volcano_plot(DE_plasma_SOD1_CTR_adj_high_detect,"log2FC_SOD1_CTR", 
                                               title = "SOD1 vs CTR in plasma (adjusted)",
                                               colors = c('CTR' = "#C25F3D", 
                                                          'ns' = 'lightgrey', 
                                                          'SOD1'= "#3da0c2"),
                                               add_x = 1.2,add_y = 0.1,fdr = 0.1)
-
-pdf("plots/volcano_plots/volcano_SOD1_CTR_plasma_adj_FDR10.pdf",width = 8, height = 6)
-volcano_SOD1_CTR_plasma_adj
-dev.off()
 
 # -> CSF (not adjusted)
 DE_CSF_SOD1_CTR = DE_PGMC_subgroups_CSF_final %>%
@@ -1094,9 +1671,17 @@ volcano_SOD1_CTR_CSF = volcano_plot(DE_CSF_SOD1_CTR,"log2FC_SOD1_CTR",
                                                   'SOD1'= "#3da0c2"),
                                        add_x = -2.5,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_SOD1_CTR_CSF_FDR10.pdf",width = 8, height = 6)
-volcano_SOD1_CTR_CSF
-dev.off()
+# -> CSF (not adjusted + high detect)
+DE_CSF_SOD1_CTR_high_detect = DE_PGMC_subgroups_CSF_high_detect_final %>%
+  select(Target,UniProtID,log2FC_SOD1_CTR,pvalue_SOD1_CTR,padj_SOD1_CTR) %>%
+  add_DE_flag(lfc = "log2FC_SOD1_CTR",padj = "padj_SOD1_CTR",up = "SOD1",down = "CTR",alpha = 0.1)
+
+volcano_SOD1_CTR_CSF_high_detect = volcano_plot(DE_CSF_SOD1_CTR_high_detect,"log2FC_SOD1_CTR", 
+                                    title = "SOD1 vs CTR in CSF",
+                                    colors = c('CTR' = "#C25F3D", 
+                                               'ns' = 'lightgrey', 
+                                               'SOD1'= "#3da0c2"),
+                                    add_x = -2.5,add_y = 0.1,fdr = 0.1)
 
 # -> CSF (adjusted)
 DE_CSF_SOD1_CTR_adj = DE_PGMC_subgroups_CSF_adj_final %>%
@@ -1110,9 +1695,17 @@ volcano_SOD1_CTR_CSF_adj = volcano_plot(DE_CSF_SOD1_CTR_adj,"log2FC_SOD1_CTR",
                                                       'SOD1'= "#3da0c2"),
                                            add_x = 1,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_SOD1_CTR_CSF_adj_FDR10.pdf",width = 8, height = 6)
-volcano_SOD1_CTR_CSF_adj
-dev.off()
+# -> CSF (adjusted + high detect)
+DE_CSF_SOD1_CTR_adj_high_detect = DE_PGMC_subgroups_CSF_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_SOD1_CTR,pvalue_SOD1_CTR,padj_SOD1_CTR) %>%
+  add_DE_flag(lfc = "log2FC_SOD1_CTR",padj = "padj_SOD1_CTR",up = "SOD1",down = "CTR",alpha = 0.1)
+
+volcano_SOD1_CTR_CSF_adj_high_detect = volcano_plot(DE_CSF_SOD1_CTR_adj_high_detect,"log2FC_SOD1_CTR", 
+                                        title = "SOD1 vs CTR in CSF (adjusted)",
+                                        colors = c('CTR' = "#C25F3D", 
+                                                   'ns' = 'lightgrey', 
+                                                   'SOD1'= "#3da0c2"),
+                                        add_x = 1,add_y = 0.1,fdr = 0.1)
 
 # -> SERUM (not adjusted)
 DE_SERUM_SOD1_CTR = DE_PGMC_subgroups_SERUM_final %>%
@@ -1126,9 +1719,17 @@ volcano_SOD1_CTR_SERUM = volcano_plot(DE_SERUM_SOD1_CTR,"log2FC_SOD1_CTR",
                                                     'SOD1'= "#3da0c2"),
                                          add_x = 0.7,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_SOD1_CTR_SERUM_FDR10.pdf",width = 8, height = 6)
-volcano_SOD1_CTR_SERUM
-dev.off()
+# -> SERUM (not adjusted + high detect)
+DE_SERUM_SOD1_CTR_high_detect = DE_PGMC_subgroups_SERUM_high_detect_final %>%
+  select(Target,UniProtID,log2FC_SOD1_CTR,pvalue_SOD1_CTR,padj_SOD1_CTR) %>%
+  add_DE_flag(lfc = "log2FC_SOD1_CTR",padj = "padj_SOD1_CTR",up = "SOD1",down = "CTR",alpha = 0.1)
+
+volcano_SOD1_CTR_SERUM_high_detect = volcano_plot(DE_SERUM_SOD1_CTR_high_detect,"log2FC_SOD1_CTR", 
+                                      title = "SOD1 vs CTR in SERUM",
+                                      colors = c('CTR' = "#C25F3D", 
+                                                 'ns' = 'lightgrey', 
+                                                 'SOD1'= "#3da0c2"),
+                                      add_x = 0.7,add_y = 0.1,fdr = 0.1)
 
 # -> SERUM (adjusted)
 DE_SERUM_SOD1_CTR_adj = DE_PGMC_subgroups_SERUM_adj_final %>%
@@ -1142,9 +1743,17 @@ volcano_SOD1_CTR_SERUM_adj = volcano_plot(DE_SERUM_SOD1_CTR_adj,"log2FC_SOD1_CTR
                                                         'SOD1'= "#3da0c2"),
                                              add_x = 0.8,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_SOD1_CTR_SERUM_adj_FDR10.pdf",width = 8, height = 6)
-volcano_SOD1_CTR_SERUM_adj
-dev.off()
+# -> SERUM (adjusted + high detect)
+DE_SERUM_SOD1_CTR_adj_high_detect = DE_PGMC_subgroups_SERUM_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_SOD1_CTR,pvalue_SOD1_CTR,padj_SOD1_CTR) %>%
+  add_DE_flag(lfc = "log2FC_SOD1_CTR",padj = "padj_SOD1_CTR",up = "SOD1",down = "CTR",alpha = 0.1)
+
+volcano_SOD1_CTR_SERUM_adj_high_detect = volcano_plot(DE_SERUM_SOD1_CTR_adj_high_detect,"log2FC_SOD1_CTR", 
+                                          title = "SOD1 vs CTR in SERUM (adjusted)",
+                                          colors = c('CTR' = "#C25F3D", 
+                                                     'ns' = 'lightgrey', 
+                                                     'SOD1'= "#3da0c2"),
+                                          add_x = 0.8,add_y = 0.1,fdr = 0.1)
 
 # -> all together
 pdf("plots/volcano_plots/volcano_SOD1_CTR_all_FDR10.pdf", onefile = TRUE, width = 14, height = 15)
@@ -1154,6 +1763,15 @@ grid.arrange(volcano_SOD1_CTR_plasma,
              volcano_SOD1_CTR_SERUM_adj,
              volcano_SOD1_CTR_CSF,
              volcano_SOD1_CTR_CSF_adj,nrow = 3, ncol = 2)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_SOD1_CTR_all_FDR10_high_detect.pdf", onefile = TRUE, width = 14, height = 15)
+grid.arrange(volcano_SOD1_CTR_plasma_high_detect, 
+             volcano_SOD1_CTR_plasma_adj_high_detect,
+             volcano_SOD1_CTR_SERUM_high_detect,
+             volcano_SOD1_CTR_SERUM_adj_high_detect,
+             volcano_SOD1_CTR_CSF_high_detect,
+             volcano_SOD1_CTR_CSF_adj_high_detect,nrow = 3, ncol = 2)
 dev.off()
 
 ## 9: TARDBP vs CTR 
@@ -1169,9 +1787,17 @@ volcano_TARDBP_CTR_plasma = volcano_plot(DE_plasma_TARDBP_CTR,"log2FC_TARDBP_CTR
                                                   'TARDBP'= "#3da0c2"),
                                        add_x = 1.7,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_TARDBP_CTR_plasma_FDR10.pdf",width = 8, height = 6)
-volcano_TARDBP_CTR_plasma
-dev.off()
+# -> plasma (not adjusted + high detect)
+DE_plasma_TARDBP_CTR_high_detect = DE_PGMC_subgroups_plasma_high_detect_final %>%
+  select(Target,UniProtID,log2FC_TARDBP_CTR,pvalue_TARDBP_CTR,padj_TARDBP_CTR) %>%
+  add_DE_flag(lfc = "log2FC_TARDBP_CTR",padj = "padj_TARDBP_CTR",up = "TARDBP",down = "CTR",alpha = 0.1)
+
+volcano_TARDBP_CTR_plasma_high_detect = volcano_plot(DE_plasma_TARDBP_CTR_high_detect,"log2FC_TARDBP_CTR", 
+                                         title = "TARDBP vs CTR in plasma",
+                                         colors = c('CTR' = "#C25F3D", 
+                                                    'ns' = 'lightgrey', 
+                                                    'TARDBP'= "#3da0c2"),
+                                         add_x = 1.7,add_y = 0.1,fdr = 0.1)
 
 # -> plasma (adjusted)
 DE_plasma_TARDBP_CTR_adj = DE_PGMC_subgroups_plasma_adj_final %>%
@@ -1185,9 +1811,17 @@ volcano_TARDBP_CTR_plasma_adj = volcano_plot(DE_plasma_TARDBP_CTR_adj,"log2FC_TA
                                                       'TARDBP'= "#3da0c2"),
                                            add_x = 1.7,add_y = 0.05,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_TARDBP_CTR_plasma_adj_FDR10.pdf",width = 8, height = 6)
-volcano_TARDBP_CTR_plasma_adj
-dev.off()
+# -> plasma (adjusted + high detect)
+DE_plasma_TARDBP_CTR_adj_high_detect = DE_PGMC_subgroups_plasma_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_TARDBP_CTR,pvalue_TARDBP_CTR,padj_TARDBP_CTR) %>%
+  add_DE_flag(lfc = "log2FC_TARDBP_CTR",padj = "padj_TARDBP_CTR",up = "TARDBP",down = "CTR",alpha = 0.1)
+
+volcano_TARDBP_CTR_plasma_adj_high_detect = volcano_plot(DE_plasma_TARDBP_CTR_adj_high_detect,"log2FC_TARDBP_CTR", 
+                                             title = "TARDBP vs CTR in plasma (adjusted)",
+                                             colors = c('CTR' = "#C25F3D", 
+                                                        'ns' = 'lightgrey', 
+                                                        'TARDBP'= "#3da0c2"),
+                                             add_x = 1.7,add_y = 0.05,fdr = 0.1)
 
 # -> CSF (not adjusted)
 DE_CSF_TARDBP_CTR = DE_PGMC_subgroups_CSF_final %>%
@@ -1201,9 +1835,17 @@ volcano_TARDBP_CTR_CSF = volcano_plot(DE_CSF_TARDBP_CTR,"log2FC_TARDBP_CTR",
                                                'TARDBP'= "#3da0c2"),
                                     add_x = 5.5,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_TARDBP_CTR_CSF_FDR10.pdf",width = 8, height = 6)
-volcano_TARDBP_CTR_CSF
-dev.off()
+# -> CSF (not adjusted + high detect)
+DE_CSF_TARDBP_CTR_high_detect = DE_PGMC_subgroups_CSF_high_detect_final %>%
+  select(Target,UniProtID,log2FC_TARDBP_CTR,pvalue_TARDBP_CTR,padj_TARDBP_CTR) %>%
+  add_DE_flag(lfc = "log2FC_TARDBP_CTR",padj = "padj_TARDBP_CTR",up = "TARDBP",down = "CTR",alpha = 0.1)
+
+volcano_TARDBP_CTR_CSF_high_detect  = volcano_plot(DE_CSF_TARDBP_CTR_high_detect,"log2FC_TARDBP_CTR", 
+                                      title = "TARDBP vs CTR in CSF",
+                                      colors = c('CTR' = "#C25F3D", 
+                                                 'ns' = 'lightgrey', 
+                                                 'TARDBP'= "#3da0c2"),
+                                      add_x = 5.5,add_y = 0.1,fdr = 0.1)
 
 # -> CSF (adjusted)
 DE_CSF_TARDBP_CTR_adj = DE_PGMC_subgroups_CSF_adj_final %>%
@@ -1217,9 +1859,17 @@ volcano_TARDBP_CTR_CSF_adj = volcano_plot(DE_CSF_TARDBP_CTR_adj,"log2FC_TARDBP_C
                                                    'TARDBP'= "#3da0c2"),
                                         add_x = 5.5,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_TARDBP_CTR_CSF_adj_FDR10.pdf",width = 8, height = 6)
-volcano_TARDBP_CTR_CSF_adj
-dev.off()
+# -> CSF (adjusted + high detect)
+DE_CSF_TARDBP_CTR_adj_high_detect = DE_PGMC_subgroups_CSF_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_TARDBP_CTR,pvalue_TARDBP_CTR,padj_TARDBP_CTR) %>%
+  add_DE_flag(lfc = "log2FC_TARDBP_CTR",padj = "padj_TARDBP_CTR",up = "TARDBP",down = "CTR",alpha = 0.1)
+
+volcano_TARDBP_CTR_CSF_adj_high_detect = volcano_plot(DE_CSF_TARDBP_CTR_adj_high_detect,"log2FC_TARDBP_CTR", 
+                                          title = "TARDBP vs CTR in CSF (adjusted)",
+                                          colors = c('CTR' = "#C25F3D", 
+                                                     'ns' = 'lightgrey', 
+                                                     'TARDBP'= "#3da0c2"),
+                                          add_x = 5.5,add_y = 0.1,fdr = 0.1)
 
 # -> SERUM (not adjusted)
 DE_SERUM_TARDBP_CTR = DE_PGMC_subgroups_SERUM_final %>%
@@ -1233,9 +1883,17 @@ volcano_TARDBP_CTR_SERUM = volcano_plot(DE_SERUM_TARDBP_CTR,"log2FC_TARDBP_CTR",
                                                  'TARDBP'= "#3da0c2"),
                                       add_x = 2,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_TARDBP_CTR_SERUM_FDR10.pdf",width = 8, height = 6)
-volcano_TARDBP_CTR_SERUM
-dev.off()
+# -> SERUM (not adjusted + high detect)
+DE_SERUM_TARDBP_CTR_high_detect = DE_PGMC_subgroups_SERUM_high_detect_final %>%
+  select(Target,UniProtID,log2FC_TARDBP_CTR,pvalue_TARDBP_CTR,padj_TARDBP_CTR) %>%
+  add_DE_flag(lfc = "log2FC_TARDBP_CTR",padj = "padj_TARDBP_CTR",up = "TARDBP",down = "CTR",alpha = 0.1)
+
+volcano_TARDBP_CTR_SERUM_high_detect = volcano_plot(DE_SERUM_TARDBP_CTR_high_detect,"log2FC_TARDBP_CTR", 
+                                        title = "TARDBP vs CTR in SERUM",
+                                        colors = c('CTR' = "#C25F3D", 
+                                                   'ns' = 'lightgrey', 
+                                                   'TARDBP'= "#3da0c2"),
+                                        add_x = 2,add_y = 0.1,fdr = 0.1)
 
 # -> SERUM (adjusted)
 DE_SERUM_TARDBP_CTR_adj = DE_PGMC_subgroups_SERUM_adj_final %>%
@@ -1249,9 +1907,17 @@ volcano_TARDBP_CTR_SERUM_adj = volcano_plot(DE_SERUM_TARDBP_CTR_adj,"log2FC_TARD
                                                      'TARDBP'= "#3da0c2"),
                                           add_x = -3.7,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_TARDBP_CTR_SERUM_adj_FDR10.pdf",width = 8, height = 6)
-volcano_TARDBP_CTR_SERUM_adj
-dev.off()
+# -> SERUM (adjusted + high detect)
+DE_SERUM_TARDBP_CTR_adj_high_detect = DE_PGMC_subgroups_SERUM_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_TARDBP_CTR,pvalue_TARDBP_CTR,padj_TARDBP_CTR) %>%
+  add_DE_flag(lfc = "log2FC_TARDBP_CTR",padj = "padj_TARDBP_CTR",up = "TARDBP",down = "CTR",alpha = 0.1)
+
+volcano_TARDBP_CTR_SERUM_adj_high_detect = volcano_plot(DE_SERUM_TARDBP_CTR_adj_high_detect,"log2FC_TARDBP_CTR", 
+                                            title = "TARDBP vs CTR in SERUM (adjusted)",
+                                            colors = c('CTR' = "#C25F3D", 
+                                                       'ns' = 'lightgrey', 
+                                                       'TARDBP'= "#3da0c2"),
+                                            add_x = -3.7,add_y = 0.1,fdr = 0.1)
 
 # -> all together
 pdf("plots/volcano_plots/volcano_TARDBP_CTR_all_FDR10.pdf", onefile = TRUE, width = 14, height = 15)
@@ -1263,6 +1929,14 @@ grid.arrange(volcano_TARDBP_CTR_plasma,
              volcano_TARDBP_CTR_CSF_adj,nrow = 3, ncol = 2)
 dev.off()
 
+pdf("plots/volcano_plots/volcano_TARDBP_CTR_all_FDR10_high_detect.pdf", onefile = TRUE, width = 14, height = 15)
+grid.arrange(volcano_TARDBP_CTR_plasma_high_detect, 
+             volcano_TARDBP_CTR_plasma_adj_high_detect,
+             volcano_TARDBP_CTR_SERUM_high_detect,
+             volcano_TARDBP_CTR_SERUM_adj_high_detect,
+             volcano_TARDBP_CTR_CSF_high_detect,
+             volcano_TARDBP_CTR_CSF_adj_high_detect,nrow = 3, ncol = 2)
+dev.off()
 
 ## 10: C9orf72 vs SOD1 
 # -> plasma (not adjusted)
@@ -1277,9 +1951,17 @@ volcano_C9orf72_SOD1_plasma = volcano_plot(DE_plasma_C9orf72_SOD1,"log2FC_C9orf7
                                                      'C9orf72'= "#3da0c2"),
                                           add_x = 1.5,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_C9orf72_SOD1_plasma_FDR10.pdf",width = 8, height = 6)
-volcano_C9orf72_SOD1_plasma
-dev.off()
+# -> plasma (not adjusted + high detect)
+DE_plasma_C9orf72_SOD1_high_detect = DE_PGMC_subgroups_plasma_high_detect_final %>%
+  select(Target,UniProtID,log2FC_C9orf72_SOD1,pvalue_C9orf72_SOD1,padj_C9orf72_SOD1) %>%
+  add_DE_flag(lfc = "log2FC_C9orf72_SOD1",padj = "padj_C9orf72_SOD1",up = "C9orf72",down = "SOD1",alpha = 0.1)
+
+volcano_C9orf72_SOD1_plasma_high_detect = volcano_plot(DE_plasma_C9orf72_SOD1_high_detect,"log2FC_C9orf72_SOD1", 
+                                           title = "C9orf72 vs SOD1 in plasma",
+                                           colors = c('SOD1' = "#C25F3D", 
+                                                      'ns' = 'lightgrey', 
+                                                      'C9orf72'= "#3da0c2"),
+                                           add_x = 1.5,add_y = 0.1,fdr = 0.1)
 
 # -> plasma (adjusted)
 DE_plasma_C9orf72_SOD1_adj = DE_PGMC_subgroups_plasma_adj_final %>%
@@ -1293,9 +1975,17 @@ volcano_C9orf72_SOD1_plasma_adj = volcano_plot(DE_plasma_C9orf72_SOD1_adj,"log2F
                                                          'C9orf72'= "#3da0c2"),
                                               add_x = 1.5,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_C9orf72_SOD1_plasma_adj_FDR10.pdf",width = 8, height = 6)
-volcano_C9orf72_SOD1_plasma_adj
-dev.off()
+# -> plasma (adjusted + high detect)
+DE_plasma_C9orf72_SOD1_adj_high_detect = DE_PGMC_subgroups_plasma_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_C9orf72_SOD1,pvalue_C9orf72_SOD1,padj_C9orf72_SOD1) %>%
+  add_DE_flag(lfc = "log2FC_C9orf72_SOD1",padj = "padj_C9orf72_SOD1",up = "C9orf72",down = "SOD1",alpha = 0.1)
+
+volcano_C9orf72_SOD1_plasma_adj_high_detect = volcano_plot(DE_plasma_C9orf72_SOD1_adj_high_detect,"log2FC_C9orf72_SOD1", 
+                                               title = "C9orf72 vs SOD1 in plasma (adjusted)",
+                                               colors = c('SOD1' = "#C25F3D", 
+                                                          'ns' = 'lightgrey', 
+                                                          'C9orf72'= "#3da0c2"),
+                                               add_x = 1.5,add_y = 0.1,fdr = 0.1)
 
 # -> CSF (not adjusted)
 DE_CSF_C9orf72_SOD1 = DE_PGMC_subgroups_CSF_final %>%
@@ -1309,9 +1999,17 @@ volcano_C9orf72_SOD1_CSF = volcano_plot(DE_CSF_C9orf72_SOD1,"log2FC_C9orf72_SOD1
                                                   'C9orf72'= "#3da0c2"),
                                        add_x = 1.5,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_C9orf72_SOD1_CSF_FDR10.pdf",width = 8, height = 6)
-volcano_C9orf72_SOD1_CSF
-dev.off()
+# -> CSF (not adjusted + high detect)
+DE_CSF_C9orf72_SOD1_high_detect = DE_PGMC_subgroups_CSF_high_detect_final %>%
+  select(Target,UniProtID,log2FC_C9orf72_SOD1,pvalue_C9orf72_SOD1,padj_C9orf72_SOD1) %>%
+  add_DE_flag(lfc = "log2FC_C9orf72_SOD1",padj = "padj_C9orf72_SOD1",up = "C9orf72",down = "SOD1",alpha = 0.1)
+
+volcano_C9orf72_SOD1_CSF_high_detect = volcano_plot(DE_CSF_C9orf72_SOD1_high_detect,"log2FC_C9orf72_SOD1", 
+                                        title = "C9orf72 vs SOD1 in CSF",
+                                        colors = c('SOD1' = "#C25F3D", 
+                                                   'ns' = 'lightgrey', 
+                                                   'C9orf72'= "#3da0c2"),
+                                        add_x = 1.5,add_y = 0.1,fdr = 0.1)
 
 # -> CSF (adjusted)
 DE_CSF_C9orf72_SOD1_adj = DE_PGMC_subgroups_CSF_adj_final %>%
@@ -1325,9 +2023,17 @@ volcano_C9orf72_SOD1_CSF_adj = volcano_plot(DE_CSF_C9orf72_SOD1_adj,"log2FC_C9or
                                                       'C9orf72'= "#3da0c2"),
                                            add_x = 1.5,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_C9orf72_SOD1_CSF_adj_FDR10.pdf",width = 8, height = 6)
-volcano_C9orf72_SOD1_CSF_adj
-dev.off()
+# -> CSF (adjusted + high detect)
+DE_CSF_C9orf72_SOD1_adj_high_detect = DE_PGMC_subgroups_CSF_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_C9orf72_SOD1,pvalue_C9orf72_SOD1,padj_C9orf72_SOD1) %>%
+  add_DE_flag(lfc = "log2FC_C9orf72_SOD1",padj = "padj_C9orf72_SOD1",up = "C9orf72",down = "SOD1",alpha = 0.1)
+
+volcano_C9orf72_SOD1_CSF_adj_high_detect = volcano_plot(DE_CSF_C9orf72_SOD1_adj_high_detect,"log2FC_C9orf72_SOD1", 
+                                            title = "C9orf72 vs SOD1 in CSF (adjusted)",
+                                            colors = c('SOD1' = "#C25F3D", 
+                                                       'ns' = 'lightgrey', 
+                                                       'C9orf72'= "#3da0c2"),
+                                            add_x = 1.5,add_y = 0.1,fdr = 0.1)
 
 # -> SERUM (not adjusted)
 DE_SERUM_C9orf72_SOD1 = DE_PGMC_subgroups_SERUM_final %>%
@@ -1341,9 +2047,17 @@ volcano_C9orf72_SOD1_SERUM = volcano_plot(DE_SERUM_C9orf72_SOD1,"log2FC_C9orf72_
                                                     'C9orf72'= "#3da0c2"),
                                          add_x = 1.7,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_C9orf72_SOD1_SERUM_FDR10.pdf",width = 8, height = 6)
-volcano_C9orf72_SOD1_SERUM
-dev.off()
+# -> SERUM (not adjusted + high detect)
+DE_SERUM_C9orf72_SOD1_high_detect = DE_PGMC_subgroups_SERUM_high_detect_final %>%
+  select(Target,UniProtID,log2FC_C9orf72_SOD1,pvalue_C9orf72_SOD1,padj_C9orf72_SOD1) %>%
+  add_DE_flag(lfc = "log2FC_C9orf72_SOD1",padj = "padj_C9orf72_SOD1",up = "C9orf72",down = "SOD1",alpha = 0.1)
+
+volcano_C9orf72_SOD1_SERUM_high_detect = volcano_plot(DE_SERUM_C9orf72_SOD1_high_detect,"log2FC_C9orf72_SOD1", 
+                                          title = "C9orf72 vs SOD1 in SERUM",
+                                          colors = c('SOD1' = "#C25F3D", 
+                                                     'ns' = 'lightgrey', 
+                                                     'C9orf72'= "#3da0c2"),
+                                          add_x = 1.7,add_y = 0.1,fdr = 0.1)
 
 # -> SERUM (adjusted)
 DE_SERUM_C9orf72_SOD1_adj = DE_PGMC_subgroups_SERUM_adj_final %>%
@@ -1357,9 +2071,17 @@ volcano_C9orf72_SOD1_SERUM_adj = volcano_plot(DE_SERUM_C9orf72_SOD1_adj,"log2FC_
                                                         'C9orf72'= "#3da0c2"),
                                              add_x = 1.8,add_y = 0.1,fdr = 0.1)
 
-pdf("plots/volcano_plots/volcano_C9orf72_SOD1_SERUM_adj_FDR10.pdf",width = 8, height = 6)
-volcano_C9orf72_SOD1_SERUM_adj
-dev.off()
+# -> SERUM (adjusted + high detect)
+DE_SERUM_C9orf72_SOD1_adj_high_detect = DE_PGMC_subgroups_SERUM_adj_high_detect_final %>%
+  select(Target,UniProtID,log2FC_C9orf72_SOD1,pvalue_C9orf72_SOD1,padj_C9orf72_SOD1) %>%
+  add_DE_flag(lfc = "log2FC_C9orf72_SOD1",padj = "padj_C9orf72_SOD1",up = "C9orf72",down = "SOD1",alpha = 0.1)
+
+volcano_C9orf72_SOD1_SERUM_adj_high_detect = volcano_plot(DE_SERUM_C9orf72_SOD1_adj_high_detect,"log2FC_C9orf72_SOD1", 
+                                              title = "C9orf72 vs SOD1 in SERUM (adjusted)",
+                                              colors = c('SOD1' = "#C25F3D", 
+                                                         'ns' = 'lightgrey', 
+                                                         'C9orf72'= "#3da0c2"),
+                                              add_x = 1.8,add_y = 0.1,fdr = 0.1)
 
 # -> all together
 pdf("plots/volcano_plots/volcano_C9orf72_SOD1_all_FDR10.pdf", onefile = TRUE, width = 14, height = 15)
@@ -1371,12 +2093,178 @@ grid.arrange(volcano_C9orf72_SOD1_plasma,
              volcano_C9orf72_SOD1_CSF_adj,nrow = 3, ncol = 2)
 dev.off()
 
+pdf("plots/volcano_plots/volcano_C9orf72_SOD1_all_FDR10_high_detect.pdf", onefile = TRUE, width = 14, height = 15)
+grid.arrange(volcano_C9orf72_SOD1_plasma_high_detect, 
+             volcano_C9orf72_SOD1_plasma_adj_high_detect,
+             volcano_C9orf72_SOD1_SERUM_high_detect,
+             volcano_C9orf72_SOD1_SERUM_adj_high_detect,
+             volcano_C9orf72_SOD1_CSF_high_detect,
+             volcano_C9orf72_SOD1_CSF_adj_high_detect,nrow = 3, ncol = 2)
+dev.off()
+
+## Save all in one pdf per fluid
+
+## -> Plasma
+pdf("plots/volcano_plots/volcano_plasma.pdf",width = 10, height = 8)
+list(volcano_ALS_CTR_plasma,
+     volcano_ALS_PGMC_plasma,
+     volcano_ALS_mimic_plasma,
+     volcano_mimic_CTR_plasma,
+     volcano_PGMC_CTR_plasma,
+     volcano_PGMC_mimic_plasma,
+     volcano_C9orf72_CTR_plasma,
+     volcano_SOD1_CTR_plasma,
+     volcano_TARDBP_CTR_plasma,
+     volcano_C9orf72_SOD1_plasma)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_plasma_adj.pdf",width = 10, height = 8)
+list(volcano_ALS_CTR_plasma_adj,
+     volcano_ALS_PGMC_plasma_adj,
+     volcano_ALS_mimic_plasma_adj,
+     volcano_mimic_CTR_plasma_adj,
+     volcano_PGMC_CTR_plasma_adj,
+     volcano_PGMC_mimic_plasma_adj,
+     volcano_C9orf72_CTR_plasma_adj,
+     volcano_SOD1_CTR_plasma_adj,
+     volcano_TARDBP_CTR_plasma_adj,
+     volcano_C9orf72_SOD1_plasma_adj)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_plasma_high_detect.pdf",width = 10, height = 8)
+list(volcano_ALS_CTR_plasma_high_detect,
+     volcano_ALS_PGMC_plasma_high_detect,
+     volcano_ALS_mimic_plasma_high_detect,
+     volcano_mimic_CTR_plasma_high_detect,
+     volcano_PGMC_CTR_plasma_high_detect,
+     volcano_PGMC_mimic_plasma_high_detect,
+     volcano_C9orf72_CTR_plasma_high_detect,
+     volcano_SOD1_CTR_plasma_high_detect,
+     volcano_TARDBP_CTR_plasma_high_detect,
+     volcano_C9orf72_SOD1_plasma_high_detect)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_plasma_adj_high_detect.pdf",width = 10, height = 8)
+list(volcano_ALS_CTR_plasma_adj_high_detect,
+     volcano_ALS_PGMC_plasma_adj_high_detect,
+     volcano_ALS_mimic_plasma_adj_high_detect,
+     volcano_mimic_CTR_plasma_adj_high_detect,
+     volcano_PGMC_CTR_plasma_adj_high_detect,
+     volcano_PGMC_mimic_plasma_adj_high_detect,
+     volcano_C9orf72_CTR_plasma_adj_high_detect,
+     volcano_SOD1_CTR_plasma_adj_high_detect,
+     volcano_TARDBP_CTR_plasma_adj_high_detect,
+     volcano_C9orf72_SOD1_plasma_adj_high_detect)
+dev.off()
+
+## -> CSF
+pdf("plots/volcano_plots/volcano_CSF.pdf",width = 10, height = 8)
+list(volcano_ALS_CTR_CSF,
+     volcano_ALS_PGMC_CSF,
+     volcano_ALS_mimic_CSF,
+     volcano_mimic_CTR_CSF,
+     volcano_PGMC_CTR_CSF,
+     volcano_PGMC_mimic_CSF,
+     volcano_C9orf72_CTR_CSF,
+     volcano_SOD1_CTR_CSF,
+     volcano_TARDBP_CTR_CSF,
+     volcano_C9orf72_SOD1_CSF)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_CSF_adj.pdf",width = 10, height = 8)
+list(volcano_ALS_CTR_CSF_adj,
+     volcano_ALS_PGMC_CSF_adj,
+     volcano_ALS_mimic_CSF_adj,
+     volcano_mimic_CTR_CSF_adj,
+     volcano_PGMC_CTR_CSF_adj,
+     volcano_PGMC_mimic_CSF_adj,
+     volcano_C9orf72_CTR_CSF_adj,
+     volcano_SOD1_CTR_CSF_adj,
+     volcano_TARDBP_CTR_CSF_adj,
+     volcano_C9orf72_SOD1_CSF_adj)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_CSF_high_detect.pdf",width = 10, height = 8)
+list(volcano_ALS_CTR_CSF_high_detect,
+     volcano_ALS_PGMC_CSF_high_detect,
+     volcano_ALS_mimic_CSF_high_detect,
+     volcano_mimic_CTR_CSF_high_detect,
+     volcano_PGMC_CTR_CSF_high_detect,
+     volcano_PGMC_mimic_CSF_high_detect,
+     volcano_C9orf72_CTR_CSF_high_detect,
+     volcano_SOD1_CTR_CSF_high_detect,
+     volcano_TARDBP_CTR_CSF_high_detect,
+     volcano_C9orf72_SOD1_CSF_high_detect)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_CSF_adj_high_detect.pdf",width = 10, height = 8)
+list(volcano_ALS_CTR_CSF_adj_high_detect,
+     volcano_ALS_PGMC_CSF_adj_high_detect,
+     volcano_ALS_mimic_CSF_adj_high_detect,
+     volcano_mimic_CTR_CSF_adj_high_detect,
+     volcano_PGMC_CTR_CSF_adj_high_detect,
+     volcano_PGMC_mimic_CSF_adj_high_detect,
+     volcano_C9orf72_CTR_CSF_adj_high_detect,
+     volcano_SOD1_CTR_CSF_adj_high_detect,
+     volcano_TARDBP_CTR_CSF_adj_high_detect,
+     volcano_C9orf72_SOD1_CSF_adj_high_detect)
+dev.off()
+
+## -> Serum
+pdf("plots/volcano_plots/volcano_SERUM.pdf",width = 10, height = 8)
+list(volcano_ALS_CTR_SERUM,
+     volcano_ALS_PGMC_SERUM,
+     volcano_ALS_mimic_SERUM,
+     volcano_mimic_CTR_SERUM,
+     volcano_PGMC_CTR_SERUM,
+     volcano_PGMC_mimic_SERUM,
+     volcano_C9orf72_CTR_SERUM,
+     volcano_SOD1_CTR_SERUM,
+     volcano_TARDBP_CTR_SERUM,
+     volcano_C9orf72_SOD1_SERUM)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_SERUM_adj.pdf",width = 10, height = 8)
+list(volcano_ALS_CTR_SERUM_adj,
+     volcano_ALS_PGMC_SERUM_adj,
+     volcano_ALS_mimic_SERUM_adj,
+     volcano_mimic_CTR_SERUM_adj,
+     volcano_PGMC_CTR_SERUM_adj,
+     volcano_PGMC_mimic_SERUM_adj,
+     volcano_C9orf72_CTR_SERUM_adj,
+     volcano_SOD1_CTR_SERUM_adj,
+     volcano_TARDBP_CTR_SERUM_adj,
+     volcano_C9orf72_SOD1_SERUM_adj)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_SERUM_high_detect.pdf",width = 10, height = 8)
+list(volcano_ALS_CTR_SERUM_high_detect,
+     volcano_ALS_PGMC_SERUM_high_detect,
+     volcano_ALS_mimic_SERUM_high_detect,
+     volcano_mimic_CTR_SERUM_high_detect,
+     volcano_PGMC_CTR_SERUM_high_detect,
+     volcano_PGMC_mimic_SERUM_high_detect,
+     volcano_C9orf72_CTR_SERUM_high_detect,
+     volcano_SOD1_CTR_SERUM_high_detect,
+     volcano_TARDBP_CTR_SERUM_high_detect,
+     volcano_C9orf72_SOD1_SERUM_high_detect)
+dev.off()
+
+pdf("plots/volcano_plots/volcano_SERUM_adj_high_detect.pdf",width = 10, height = 8)
+list(volcano_ALS_CTR_SERUM_adj_high_detect,
+     volcano_ALS_PGMC_SERUM_adj_high_detect,
+     volcano_ALS_mimic_SERUM_adj_high_detect,
+     volcano_mimic_CTR_SERUM_adj_high_detect,
+     volcano_PGMC_CTR_SERUM_adj_high_detect,
+     volcano_PGMC_mimic_SERUM_adj_high_detect,
+     volcano_C9orf72_CTR_SERUM_adj_high_detect,
+     volcano_SOD1_CTR_SERUM_adj_high_detect,
+     volcano_TARDBP_CTR_SERUM_adj_high_detect,
+     volcano_C9orf72_SOD1_SERUM_adj_high_detect)
+dev.off()
 
 
-
-
-
-## signed p-values 
+## signed p-values (STAYED HERE)
 # ALS vs CTR + ALS vs PGMC
 colors = c('ALS' = '#32A55E',
   'PGMC' = '#96AA9A',
@@ -1422,7 +2310,7 @@ signed_pvalue_ALS_PGMC_CTR <- function(data_to_plot,title_plot){
                      min.segment.length = unit(0.1, "lines"), 
                      max.overlaps = 40, size = 5)  }
 
-# -> Plasma
+# -> SERUM
 signed_subgroups_ALS_CTR_and_ALS_PGMC = merge(DE_subgroups_plasma_ALS_CTR %>%
   mutate(signed_ALS_CTR = sign(log2FC_ALS_CTR)*log10_padj) %>%
   rename(DE_ALS_CTR = DE) %>%
