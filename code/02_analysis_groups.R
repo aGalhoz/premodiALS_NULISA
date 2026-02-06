@@ -694,7 +694,8 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjust
 
 ## 9. Full pipeline for one dataset (all samples OR PGMC subset)
 run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL",
-                              covariates = c("age","sex","center")) {
+                              covariates = c("age","sex","center"),
+                              high_detectability = FALSE) {
   
   message("Preparing dataset...")
   df <- prepare_dataset(protein_data, sample_map)
@@ -709,9 +710,14 @@ run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL",
     pvals <- extract_pvalues(stats)
     
     # Save p-values
-    write_xlsx(pvals,
-               paste0("results/", prefix, "_pvalues_", fluid, ".xlsx"))
-    
+    if(high_detectability) {
+      write_xlsx(pvals,
+                 paste0("results/", prefix, "_pvalues_", fluid, "_high_detectability.xlsx"))
+    } else{
+      write_xlsx(pvals,
+                 paste0("results/", prefix, "_pvalues_", fluid, ".xlsx"))
+    }
+  
     # Adjusted results
     df_fluid <- df %>% filter(SampleMatrixType == fluid)
     stats_adj <- run_stats_for_fluid(df_fluid,fluid,"NPQ",adjust = TRUE, covariates = covariates)
@@ -719,9 +725,14 @@ run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL",
     df_fluid_adj = stats_adj$data
   
     # Save p-values
-    write_xlsx(pvals_adj,
-               paste0("results/", prefix, "_adjusted_pvalues_", fluid, ".xlsx"))
-    
+    if(high_detectability) {
+      write_xlsx(pvals_adj,
+                 paste0("results/", prefix, "_adjusted_pvalues_", fluid, "_high_detectability.xlsx"))
+    } else{
+      write_xlsx(pvals_adj,
+                 paste0("results/", prefix, "_adjusted_pvalues_", fluid, ".xlsx"))
+    }
+   
     results[[fluid]] <- list(
       pvals = pvals,
       pvals_adjusted = pvals_adj
@@ -729,39 +740,44 @@ run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL",
     
     # Top 15 plot (violin)
     p_top15 <- plot_top_proteins_violin(df, stats, td, fluid)
-    #ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_noLOD", fluid, ".pdf"),
-    #       p_top15, width = 15, height = 18)
-    ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_LOD_", fluid, ".pdf"),
-           p_top15, width = 15, height = 18)
+
+    if(!high_detectability) {
+      ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_LOD_", fluid, ".pdf"),
+             p_top15, width = 15, height = 18)
+    }
     
     p_top15_adj <- plot_top_proteins_violin(df_fluid_adj, stats_adj, td, fluid,adjusted = TRUE)
-    # ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_noLOD_", fluid, "_adj.pdf"),
-    #        p_top15_adj, width = 15, height = 18)
-    ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_LOD_", fluid, "_adj.pdf"),
-           p_top15_adj, width = 15, height = 18)
+    
+    if(!high_detectability) {
+      ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_LOD_", fluid, "_adj.pdf"),
+             p_top15_adj, width = 15, height = 18)
+    }
     
     # All proteins (multi-page PDF)
     targets <- unique(df$Target)
-    # pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_noLOD", fluid, "_others.pdf"),
-    #     width = 6, height = 5.7)
-    pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_LOD_", fluid, "_others.pdf"),
-        width = 6, height = 5.7)
-    for (t in targets) {
-      p <- plot_single_protein_violin(df, stats, td, fluid, t)
-      print(p)
+  
+    if(!high_detectability) {
+      pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_LOD_", fluid, "_others.pdf"),
+          width = 6, height = 5.7)
+      for (t in targets) {
+        p <- plot_single_protein_violin(df, stats, td, fluid, t)
+        print(p)
+      }
+      dev.off()
     }
-    dev.off()
     
     targets <- unique(df_fluid_adj$Target)
-    # pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_noLOD", fluid, "_others_adj.pdf"),
-    #     width = 6, height = 5.7)
-    pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_LOD_", fluid, "_others_adj.pdf"),
-        width = 6, height = 5.7)
-    for (t in targets) {
-      p <- plot_single_protein_violin(df_fluid_adj, stats_adj, td, fluid, t,adjusted = TRUE)
-      print(p)
+   
+    if(!high_detectability) {
+      pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_LOD_", fluid, "_others_adj.pdf"),
+          width = 6, height = 5.7)
+      for (t in targets) {
+        p <- plot_single_protein_violin(df_fluid_adj, stats_adj, td, fluid, t,adjusted = TRUE)
+        print(p)
+      }
+      dev.off()
     }
-    dev.off()
+    
   }
   
   return(results)
@@ -1057,6 +1073,32 @@ results_ALL <- run_full_pipeline(
   prefix          = "ALLsamples"
 )
 
+## 1.1 All samples
+protein_data_high_detectability = protein_data %>%
+  left_join(detectability_summary %>% 
+              select(SampleMatrixType,Target,detectability)) %>%
+  filter(detectability == "high")
+  
+results_ALL_high_detectability <- run_full_pipeline(
+  protein_data    = protein_data_high_detectability,
+  sample_map      = samples_ID_type %>% 
+    mutate(subtype = type,
+           center = dplyr::case_when(
+             grepl("TR", ParticipantCode) ~ "Turkey",
+             grepl("CH", ParticipantCode) ~ "Switzerland",
+             grepl("DE", ParticipantCode) ~ "Germany",
+             grepl("SK", ParticipantCode) ~ "Slovakia",
+             grepl("FR", ParticipantCode) ~ "France",
+             grepl("IL", ParticipantCode) ~ "Israel",
+             TRUE                 ~ NA_character_
+           )) %>%
+    left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)),
+  td              = td %>% left_join(target_detectability_extra %>% select(Target,ProjectLOD)) %>%
+    select(SampleMatrixType,Target,TargetLOD_NPQ,ProjectLOD) %>% distinct(),
+  prefix          = "ALLsamples",
+  high_detectability = TRUE
+)
+
 ## 2. PGMC mutation analysis
 results_PGMC <- run_full_pipeline(
   protein_data = protein_data,
@@ -1077,6 +1119,29 @@ results_PGMC <- run_full_pipeline(
   td           = td %>% left_join(target_detectability_extra %>% select(Target,ProjectLOD)) %>%
     select(SampleMatrixType,Target,TargetLOD_NPQ,ProjectLOD) %>% distinct(),
   prefix       = "PGMCvsCTR"
+)
+
+## 2.1 All samples
+results_PGMC_high_detectability <- run_full_pipeline(
+  protein_data = protein_data_high_detectability,
+  sample_map   = samples_PGMC_CTR_ID_type %>% 
+    mutate(subtype = type,
+           center = dplyr::case_when(
+             grepl("TR", ParticipantCode) ~ "Turkey",
+             grepl("CH", ParticipantCode) ~ "Switzerland",
+             grepl("DE", ParticipantCode) ~ "Germany",
+             grepl("SK", ParticipantCode) ~ "Slovakia",
+             grepl("FR", ParticipantCode) ~ "France",
+             grepl("IL", ParticipantCode) ~ "Israel",
+             TRUE                 ~ NA_character_
+           )) %>%
+    #filter(!type %in% c("FUS","UBQLN2","FIG4","other")),
+    mutate(type = ifelse(type %in% c("FUS","UBQLN2","FIG4","other"),"others",type)) %>%
+    left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)),
+  td           = td %>% left_join(target_detectability_extra %>% select(Target,ProjectLOD)) %>%
+    select(SampleMatrixType,Target,TargetLOD_NPQ,ProjectLOD) %>% distinct(),
+  prefix       = "PGMCvsCTR",
+  high_detectability = TRUE
 )
 
 ## 3. PCA by fluid and subtypes 
