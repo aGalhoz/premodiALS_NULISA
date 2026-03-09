@@ -4,19 +4,19 @@
 date_CTR <- Sex_age_all_participants %>%
   select(Pseudonyme,age) %>%
   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "CTR",]$PatientID %>%unique()))) %>%
-  mutate(patient_group = rep("CTR",29))
+  mutate(patient_group = rep("CTR"))
 date_ALS <- Sex_age_all_participants %>%
   select(Pseudonyme,age) %>%
   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "ALS",]$PatientID %>%unique()))) %>%
-  mutate(patient_group = rep("ALS",36))
+  mutate(patient_group = rep("ALS"))
 date_mimic <- Sex_age_all_participants %>%
   select(Pseudonyme,age) %>%
   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "mimic",]$PatientID %>%unique()))) %>%
-  mutate(patient_group = rep("mimic",8))
+  mutate(patient_group = rep("mimic"))
 date_PGMC <- Sex_age_all_participants %>%
   select(Pseudonyme,age) %>%
   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "PGMC",]$PatientID %>%unique())))  %>%
-  mutate(patient_group = rep("PGMC",34))
+  mutate(patient_group = rep("PGMC"))
 
 skim(date_CTR)
 skim(date_ALS)
@@ -33,19 +33,19 @@ dunn_test(data = date_all,age~patient_group)
 Sex_CTR <- Sex_age_all_participants %>%
   select(Pseudonyme,sex) %>%
   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "CTR",]$PatientID %>%unique()))) %>%
-  mutate(patient_group = rep("CTR",29))
+  mutate(patient_group = rep("CTR"))
 Sex_ALS <- Sex_age_all_participants %>%
   select(Pseudonyme,sex) %>%
   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "ALS",]$PatientID %>%unique()))) %>%
-  mutate(patient_group = rep("ALS",36))
+  mutate(patient_group = rep("ALS"))
 Sex_mimic <- Sex_age_all_participants %>%
   select(Pseudonyme,sex) %>%
   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "mimic",]$PatientID %>%unique()))) %>%
-  mutate(patient_group = rep("mimic",8))
+  mutate(patient_group = rep("mimic"))
 Sex_PGMC <- Sex_age_all_participants %>%
   select(Pseudonyme,sex) %>%
   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "PGMC",]$PatientID %>%unique())))  %>%
-  mutate(patient_group = rep("PGMC",34))
+  mutate(patient_group = rep("PGMC"))
   
 skim(Sex_ALS)
 skim(Sex_CTR)

@@ -17,6 +17,9 @@ library(skimr)
 library(ggExtra)
 library(RColorBrewer)
 library(gridExtra)
+library(grid)
+library(showtext)
+showtext_auto()  # ensures UTF-8 + font rendering
 
 ### Directories
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
@@ -33,8 +36,8 @@ dir.create(file.path(getwd(),'plots/volcano_plots'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/signed_plots'), showWarnings = FALSE)
 
 ### Collect data
-# new documentation from 27-08-2025
-GeneralDocumentation <- read_delim("data input/export-2025-08-27-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK/GeneralDocumentation.csv", 
+# new documentation from 19-02-2026
+GeneralDocumentation <- read_delim("data input/export-2026-02-19-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK/GeneralDocumentation.csv", 
            delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
 # IDS of patients
@@ -42,49 +45,152 @@ GeneralDocumentation <- read_delim("data input/export-2025-08-27-PREMODIALS-AKDT
 ALS_ID <- GeneralDocumentation %>%
   filter((ALSuncertainty == 1 | ALSFUdiagnosis == 1) & ALSFUdiagnosis %in% c(1,3,NA)) %>%
   select(PatientID,ParticipantCode) %>% 
-  mutate(type = rep("ALS",68))
+  mutate(type = rep("ALS"))
 
 # -> CTR 
 CTR_ID <- GeneralDocumentation %>%
   filter(PGMC == 2) %>%
   select(PatientID,ParticipantCode) %>% 
-  mutate(type = rep("CTR",55))
+  mutate(type = rep("CTR"))
 
 # -> PGMC
 PGMC_ID <- GeneralDocumentation %>%
   filter(PGMC == 1) %>%
   select(PatientID,ParticipantCode) %>% 
-  mutate(type = rep("PGMC",64))
+  mutate(type = rep("PGMC"))
 
 # -> Mimic
 mimic_ID <- GeneralDocumentation %>%
   filter((ALSuncertainty == 2 | ALSFUdiagnosis == 2) & ALSFUdiagnosis %in% c(2,NA)) %>%
   select(PatientID,ParticipantCode) %>% 
-  mutate(type = rep("mimic",23))
+  mutate(type = rep("mimic"))
+
+# -> SYMP
+SYMP_ID <- GeneralDocumentation %>%
+  filter(PGMC == 3 & ALSuncertainty == 3 & ALSFUdiagnosis %in% c(3,NA)) %>%
+  select(PatientID,ParticipantCode) %>% 
+  mutate(type = "SYMP")
+
+# Combine all assigned PatientIDs
+assigned_IDs <- bind_rows(ALS_ID, CTR_ID, PGMC_ID, mimic_ID, SYMP_ID) %>%
+  select(PatientID)
+
+# Find remaining/unassigned patients
+remaining_IDs <- GeneralDocumentation %>%
+  filter(!PatientID %in% assigned_IDs$PatientID)
+
+# Count how many are left
+nrow(remaining_IDs)
+# 7
+
+NA_ID <- remaining_IDs %>%
+  select(PatientID,ParticipantCode) %>% 
+  mutate(type = "NA")
 
 # PGMC IDs with mutations
 PGMC_mutations_ID <- GeneralDocumentation %>%
-  select(PatientID, ParticipantCode,PGMC,contains("MutationType")) %>%
-  filter(PGMC==1)
-PGMC_mutations_ID_tmp <- sapply(apply(PGMC_mutations_ID[,4:17],1,
-                                  function(x){which(x == 1)}) %>% unique(), function(x) x + 3)
-PGMC_mutations_ID <- PGMC_mutations_ID[,c(1,2,unlist(PGMC_mutations_ID_tmp))]
+  # Select relevant columns: all MutationType* + all PreciseMutation* + PatientID etc.
+  select(PatientID, ParticipantCode, PGMC, contains("MutationType"), starts_with("PreciseMutation")) %>%
+  # Keep only patients in PGMC_ID
+  filter(PatientID %in% PGMC_ID$PatientID) %>%
+  # Pivot longer all MutationType columns
+  pivot_longer(
+    cols = starts_with("MutationType"),
+    names_to = "mutation_column",
+    values_to = "value"
+  ) %>%
+  # Keep only rows where mutation is present
+  filter(value == 1) %>%
+  # Extract mutation name from column name
+  mutate(type = sub("^MutationType", "", mutation_column)) %>%
+  # Rowwise to pick the correct PreciseMutation column per row
+  rowwise() %>%
+  mutate(
+    PreciseMutationCol = if(type == "Other") "PreciseMutationOther" else paste0("PreciseMutation", type),
+    # Safely pick the value if column exists, else NA
+    PreciseMutation = if(PreciseMutationCol %in% names(cur_data())) {
+      cur_data()[[PreciseMutationCol]]
+    } else {
+      NA_character_
+    }
+  ) %>%
+  ungroup() %>%
+  # Keep only relevant columns
+  select(PatientID, ParticipantCode, type, PreciseMutation)
+
 PGMC_mutations_ID <- PGMC_mutations_ID %>%
-  mutate(type = ifelse(MutationTypeC9orf72 == 1,"C9orf72",
-                       ifelse(MutationTypeSOD1 == 1,"SOD1",
-                              ifelse(MutationTypeTARDBP == 1,"TARDBP",
-                                     ifelse(MutationTypeFUS==1,"FUS",
-                                            ifelse(MutationTypeFIG4==1,"FIG4",
-                                                   ifelse(MutationTypeUBQLN2==1,"UBQLN2",
-                                            ifelse(MutationTypeOther==1,"other",NA)))))))) %>%
-  select(PatientID,ParticipantCode,type)
+  mutate(
+    mutation = if_else(
+      type != "Other",
+      type,
+      # For "Other", extract the first word of PreciseMutation
+      word(PreciseMutation, 1)
+    )
+  )
+
+# ALS IDs with mutations
+ALS_mutations_ID <- GeneralDocumentation %>%
+  # Select relevant columns: PatientID, ParticipantCode, PGMC + all MutationType* + PreciseMutation* columns
+  select(PatientID, ParticipantCode, PGMC, contains("MutationType"), starts_with("PreciseMutation")) %>%
+  # Keep only ALS patients
+  filter(PatientID %in% ALS_ID$PatientID) %>%
+  # Pivot longer all MutationType columns
+  pivot_longer(
+    cols = starts_with("MutationType"),
+    names_to = "mutation_column",
+    values_to = "value"
+  ) %>%
+  # Keep only rows where mutation is present
+  filter(value == 1) %>%
+  # Extract mutation name from column name
+  mutate(type = sub("^MutationType", "", mutation_column)) %>%
+  # Rowwise to pick the correct PreciseMutation column per row
+  rowwise() %>%
+  mutate(
+    PreciseMutationCol = if(type == "Other") "PreciseMutationOther" else paste0("PreciseMutation", type),
+    # Safely pick the value if column exists, else NA
+    PreciseMutation = if(PreciseMutationCol %in% names(cur_data())) {
+      cur_data()[[PreciseMutationCol]]
+    } else {
+      NA_character_
+    }
+  ) %>%
+  ungroup() %>%
+  # Create the mutation column
+  mutate(
+    mutation = if_else(
+      type != "Other",
+      type,
+      # For "Other", take first word of PreciseMutation
+      word(PreciseMutation, 1)
+    )
+  ) %>%
+  # Keep only relevant columns
+  select(PatientID, ParticipantCode, type, PreciseMutation, mutation)
+
+ALS_mutations_ID <- ALS_mutations_ID %>%
+  filter(!ParticipantCode %in% c("SK307", "SK309", "SK329"))
+# Remove unknown ALS mutation
+
+# Classify DE309 as SOD1 (He is SOD1 and FIG4)
+ALS_mutations_ID <- ALS_mutations_ID %>%
+  filter(
+    !(ParticipantCode == "DE309" & type != "SOD1")  # remove DE309 rows where type is not SOD1
+  )
 
 all_participants_IDs = do.call("rbind",
                                list(CTR_ID,
                                     ALS_ID,
                                     PGMC_ID,
                                     mimic_ID,
-                                    PGMC_mutations_ID))
+                                    SYMP_ID,
+                                    NA_ID,
+                                    PGMC_mutations_ID %>%
+                                      select(PatientID,ParticipantCode,mutation) %>%
+                                      rename(type = mutation)))
+all_participants_IDs <- rbind(all_participants_IDs,
+                              c("XH4W23T7","FR108","C9orf72"))
+                              
 writexl::write_xlsx(all_participants_IDs,"results/all_participants_IDs.xlsx")
 
 # information on sample IDs
@@ -128,9 +234,84 @@ participants_ALS_mimic = read_excel("data input/recruited participants.xlsx",
   select(Pseudonyme,Sex,`Age...7`) %>%
   rename(sex = Sex,
          age = `Age...7`)
-Sex_age_all_participants = do.call("rbind",list(participants_PGMC,
-                                                participants_CTR,
-                                                participants_ALS_mimic))
+
+participants_Turkey = read_excel("data input/recruited participants.xlsx", 
+                                     sheet = "Turkey") %>%
+  select(Pseudonyme,Sex,`Age...7`) %>%
+  rename(sex = Sex,
+         age = `Age...7`)
+participants_Slovakia = read_excel("data input/recruited participants.xlsx", 
+                                 sheet = "Slovakia") %>%
+  select(Pseudonyme,Sex,`Age...7`) %>%
+  rename(sex = Sex,
+         age = `Age...7`)
+participants_Germany = read_excel("data input/recruited participants.xlsx", 
+                                   sheet = "Germany - Munich") %>%
+  select(Pseudonyme,Sex,`Age...7`) %>%
+  rename(sex = Sex,
+         age = `Age...7`)
+participants_Switzerland = read_excel("data input/recruited participants.xlsx", 
+                                   sheet = "Switzerland") %>%
+  select(Pseudonyme,Sex,`Age...7`) %>%
+  rename(sex = Sex,
+         age = `Age...7`)
+participants_Israel = read_excel("data input/recruited participants.xlsx", 
+                                   sheet = "Israel") %>%
+  select(Pseudonyme,Sex,`Age...7`) %>%
+  rename(sex = Sex,
+         age = `Age...7`)
+participants_France = read_excel("data input/recruited participants.xlsx", 
+                                   sheet = "France") %>%
+  select(Pseudonyme,Sex,`Age...7`) %>%
+  rename(sex = Sex,
+         age = `Age...7`)
+participants_Czech = read_excel("data input/recruited participants.xlsx", 
+                                   sheet = "Czech Republic") %>%
+  select(Pseudonyme,Sex,`Age...7`) %>%
+  rename(sex = Sex,
+         age = `Age...7`)
+
+# Sex_age_all_participants = do.call("rbind",list(participants_PGMC,
+#                                                 participants_CTR,
+#                                                 participants_ALS_mimic))
+
+Sex_age_all_participants = do.call("rbind",list(participants_Czech,
+                                                participants_France,
+                                                participants_Germany,
+                                                participants_Israel,
+                                                participants_Turkey,
+                                                participants_Slovakia,
+                                                participants_Switzerland))
+
+all_participants_IDs_final <- all_participants_IDs %>%
+  # Join PGMC mutations
+  left_join(
+    PGMC_mutations_ID %>% select(PatientID, mutation) %>% rename(PGMC_mutation = mutation),
+    by = "PatientID"
+  ) %>%
+  # Manually fix FR108
+  mutate(
+    PGMC_mutation = if_else(ParticipantCode == "FR108", "C9orf72", PGMC_mutation)
+  ) %>%
+  # Join ALS mutations
+  left_join(
+    ALS_mutations_ID %>% select(PatientID, mutation) %>% rename(ALS_mutation = mutation),
+    by = "PatientID"
+  ) %>%
+  # Combine both into a single mutation column
+  mutate(
+    mutation = coalesce(PGMC_mutation, ALS_mutation)  # take PGMC if present, else ALS
+  ) %>%
+  # Optional: remove intermediate columns
+  select(-PGMC_mutation, -ALS_mutation)
+
+all_participants_IDs_final <- merge(all_participants_IDs_final,
+                              Sex_age_all_participants %>% rename(PatientID = Pseudonyme),
+                              by = colnames(all_participants_IDs)[1],
+                              all.x = TRUE) %>%
+  filter(type %in% c("ALS","CTR","mimic","PGMC","SYMP",NA))
+
+writexl::write_xlsx(all_participants_IDs_final,"results/all_participants_IDs_final.xlsx")
 
 # Questionnaire info with ALSFRS scores
 Questionnaire <- read_delim("data input/export-2025-09-04-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_KSSGCH_MRI_NIUSASSK (ALSFRS-r)/QuestionnaireG.csv", 

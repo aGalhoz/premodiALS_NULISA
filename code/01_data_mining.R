@@ -152,29 +152,16 @@ delta_median_per_fluid <- function(df,plate_ref){
 
 samples_ID_type <- sample_ID_info %>%
   rename(ParticipantCode = `Optional Informarion (patient ID)`) %>%
-  left_join(bind_rows(ALS_ID, CTR_ID, PGMC_ID, mimic_ID), by = "ParticipantCode")
+  left_join(bind_rows(ALS_ID, CTR_ID, PGMC_ID, mimic_ID), by = "ParticipantCode") %>%
+  filter(ParticipantCode != "DE320")
 
 samples_PGMC_CTR_ID_type = sample_ID_info %>%
   rename(ParticipantCode = `Optional Informarion (patient ID)`) %>%
-  left_join(bind_rows(CTR_ID,PGMC_mutations_ID), by = "ParticipantCode")
+  left_join(bind_rows(CTR_ID,PGMC_mutations_ID), by = "ParticipantCode") %>%
+  filter(ParticipantCode != "DE320")
 
 ###############################################
-### 2. Missing ID mapping
-###############################################
-
-samples_ID_NA <- samples_ID_type %>%
-  filter(is.na(type)) %>%
-  left_join(
-    GeneralDocumentation %>%
-      select(ParticipantCode, PGMC, ALSuncertainty, ALSFUdiagnosis, LFU) %>%
-      distinct(),
-    by = "ParticipantCode"
-  )
-
-writexl::write_xlsx(samples_ID_NA, "results/samples_ID_NA.xlsx")
-
-###############################################
-### 3. Merge protein data with sample type
+### 2. Merge protein data with sample type
 ###############################################
 
 protein_data_IDs <- protein_data %>%
