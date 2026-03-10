@@ -4,6 +4,12 @@
 ### Helper Functions
 ###############################################
 
+# Differential expression analyses
+
+###############################################
+### Helper Functions
+###############################################
+
 ## 1. Mean NPQ
 summarise_mean_NPQ <- function(data, matrix_type,adjusted = FALSE) {
   if(adjusted){
@@ -17,19 +23,54 @@ summarise_mean_NPQ <- function(data, matrix_type,adjusted = FALSE) {
         names_prefix = "mean_NPQ_"
       )
   } else{
-  data %>%
-    filter(SampleMatrixType == matrix_type, !is.na(NPQ)) %>%
-    group_by(type, Target, UniProtID) %>%
-    summarise(mean_NPQ = mean(NPQ), .groups = "drop") %>%
-    pivot_wider(
-      names_from = type,
-      values_from = mean_NPQ,
-      names_prefix = "mean_NPQ_"
-    )
-    }
+    data %>%
+      filter(SampleMatrixType == matrix_type, !is.na(NPQ)) %>%
+      group_by(type, Target, UniProtID) %>%
+      summarise(mean_NPQ = mean(NPQ), .groups = "drop") %>%
+      pivot_wider(
+        names_from = type,
+        values_from = mean_NPQ,
+        names_prefix = "mean_NPQ_"
+      )
+  }
 }
 
-## 2. add log2FC for groups and PGMC subgroups
+## 2. adjust dataset with covariates
+adjust_dataset <- function(df, covariates = c("age", "sex","center")) {
+  
+  df %>%
+    group_by(Target, SampleMatrixType) %>%
+    mutate(
+      NPQ_adj = local({
+        
+        sub_df <- cur_data()
+        ok <- complete.cases(sub_df[, c("NPQ", covariates)])
+        
+        # default output
+        res <- rep(NA_real_, nrow(sub_df))
+        
+        if (sum(ok) >= 3) {
+          f <- as.formula(
+            paste("NPQ ~", paste(covariates, collapse = " + "))
+          )
+          
+          fit <- try(
+            lm(f, data = sub_df[ok, , drop = FALSE]),
+            silent = TRUE
+          )
+          
+          if (!inherits(fit, "try-error")) {
+            res[ok] <- residuals(fit)
+          }
+        }
+        
+        res
+      })
+    ) %>%
+    ungroup()
+}
+
+## 3. add log2FC for groups and PGMC subgroups
 add_log2fc_standard <- function(df) {
   df %>%
     mutate(
@@ -53,12 +94,12 @@ add_log2fc_pgmc <- function(df) {
     )
 }
 
-## 3. Final table
+## 4. Final table
 finalise_DE_table <- function(df,PGMC_groups = FALSE) {
   if(PGMC_groups){
     df %>%
       select(
-        Target, UniProtID, Fluid,
+        Target, UniProtID, Fluid,pvalue_anova,
         contains("C9orf72_CTR"),contains("CTR_C9orf72"),
         contains("TARDBP_CTR"),contains("CTR_TARDBP"),
         contains("SOD1_CTR"),contains("CTR_SOD1"),
@@ -70,7 +111,7 @@ finalise_DE_table <- function(df,PGMC_groups = FALSE) {
   }else{
     df %>%
       select(
-        Target, UniProtID, Fluid,
+        Target, UniProtID, Fluid,pvalue_anova,
         contains("ALS_CTR"),contains("CTR_ALS"),
         contains("ALS_PGMC"),contains("PGMC_ALS"),
         contains("ALS_mimic"),contains("mimic_ALS"),
@@ -85,7 +126,7 @@ finalise_DE_table <- function(df,PGMC_groups = FALSE) {
   }
 }
 
-## 4. add DEx info in data
+## 5. add DEx info in data
 add_DE_flag <- function(df, lfc, padj, up, down, alpha) {
   df %>%
     mutate(
@@ -143,7 +184,6 @@ volcano_plot <- function(
       legend.title = element_text(size = 16),
       legend.text = element_text(size = 15))
 }
-
 
 ###############################################################################
 # Run pipeline
@@ -480,8 +520,8 @@ volcano_ALS_CTR_CSF_adj = volcano_plot(DE_CSF_ALS_CTR_adj,"log2FC_ALS_CTR",
                                           title = "ALS vs CTR in CSF (adjusted)",
                                           colors = c('CTR' = "#C25F3D", 
                                                      'ns' = 'lightgrey', 
-                                                     'ALS'= "#3da0c2",fdr = 0.1),
-                                          add_x = 1.8,add_y = 0.2)
+                                                     'ALS'= "#3da0c2"),
+                                          add_x = 1.8,add_y = 0.2,fdr = 0.1)
 
 
 # -> SERUM (not adjusted)

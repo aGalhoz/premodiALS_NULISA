@@ -314,11 +314,11 @@ all_participants_IDs_final <- merge(all_participants_IDs_final,
 writexl::write_xlsx(all_participants_IDs_final,"results/all_participants_IDs_final.xlsx")
 
 # Questionnaire info with ALSFRS scores
-Questionnaire <- read_delim("data input/export-2025-09-04-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_KSSGCH_MRI_NIUSASSK (ALSFRS-r)/QuestionnaireG.csv", 
-                             delim = ";", escape_double = FALSE, trim_ws = TRUE)
+Questionnaire <- read_delim("data input/export-2026-02-19-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK/QuestionnaireG.csv", 
+                            delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
 # ECAS info
-ECAS = read_delim("data input/export-2025-11-07-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK/Ecas.csv", 
-                   delim = ";", escape_double = FALSE, trim_ws = TRUE)
+ECAS = read_delim("data input/export-2026-02-19-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK/Ecas.csv", 
+                  delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
 

@@ -146,6 +146,115 @@ delta_median_per_fluid <- function(df,plate_ref){
     select(Target,PlateID,delta)
 }
 
+
+## 8. Get variance by fluid in respect to the covariates
+variance_by_fluid = function(df, value_col = "NPQ", covariates = c("age","sex","center")) {
+  
+  results <- lapply(unique(df$SampleMatrixType), function(fluid) {
+    df_f <- df %>% filter(SampleMatrixType == fluid)
+    
+    lapply(unique(df_f$Target), function(tgt) {
+      sub_df <- df_f %>% filter(Target == tgt)
+      
+      # Ensure 'type' is factor
+      sub_df$type <- as.factor(sub_df$type)
+      
+      # Skip if 'type' has < 2 levels
+      if(nlevels(sub_df$type) < 2){
+        warning("Skipping Target ", tgt, " in Fluid ", fluid, " because 'type' has < 2 levels")
+        return(NULL)
+      }
+      
+      # Keep covariates with ≥2 unique values
+      valid_covs <- covariates[sapply(sub_df[covariates], function(x) n_distinct(x) > 1)]
+      
+      # Convert character covariates to factors if needed
+      for(cv in valid_covs){
+        if(is.character(sub_df[[cv]]) || is.logical(sub_df[[cv]])) sub_df[[cv]] <- as.factor(sub_df[[cv]])
+        if(is.factor(sub_df[[cv]]) && nlevels(sub_df[[cv]]) < 2) valid_covs <- setdiff(valid_covs, cv)
+      }
+      
+      # Build full formula
+      fmla_full <- as.formula(
+        paste(value_col, "~ type",
+              if(length(valid_covs) > 0) paste("+", paste(valid_covs, collapse = " + ")))
+      )
+      
+      fit_full <- try(lm(fmla_full, data = sub_df), silent = TRUE)
+      if(inherits(fit_full, "try-error")) return(NULL)
+      
+      # Type-only variance
+      fmla_type <- as.formula(
+        paste(value_col, "~", if(length(valid_covs) > 0) paste(valid_covs, collapse = " + ") else "1")
+      )
+      fit_type <- try(lm(fmla_type, data = sub_df), silent = TRUE)
+      if(inherits(fit_type, "try-error")) return(NULL)
+      
+      var_type <- sum(resid(fit_type)^2) - sum(resid(fit_full)^2)
+      
+      # Covariate-specific variance
+      var_covs <- sapply(valid_covs, function(cov) {
+        covs_reduced <- setdiff(valid_covs, cov)
+        fmla_reduced <- as.formula(
+          paste(value_col, "~ type",
+                if(length(covs_reduced) > 0) paste("+", paste(covs_reduced, collapse = " + ")))
+        )
+        fit_reduced <- try(lm(fmla_reduced, data = sub_df), silent = TRUE)
+        if(inherits(fit_reduced, "try-error")) return(NA_real_)
+        sum(resid(fit_reduced)^2) - sum(resid(fit_full)^2)
+      })
+      
+      tibble(
+        Fluid = fluid,
+        Target = tgt,
+        variable = c("type", names(var_covs)),
+        variance_explained = c(var_type, var_covs)
+      )
+      
+    }) %>% bind_rows()
+    
+  }) %>% bind_rows()
+  
+  # Summarize per variable per fluid
+  summary_df <- results %>%
+    group_by(Fluid, variable) %>%
+    summarize(
+      median_variance_pct = median(variance_explained, na.rm = TRUE),
+      mean_variance_pct   = mean(variance_explained, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  list(
+    raw = results,
+    summary = summary_df
+  )
+}
+
+## 9. Plot variance of each covariate per fluid
+plot_variance_by_fluid = function(summary_df) {
+  
+  # Ensure variable is a factor with a consistent order
+  summary_df <- summary_df %>%
+    mutate(variable = factor(variable, levels = c("type", "age", "sex", "center")))
+  
+  ggplot(summary_df, aes(x = variable, y = median_variance_pct, fill = variable)) +
+    geom_col(width = 0.6, show.legend = FALSE) +
+    geom_point(aes(y = mean_variance_pct, color = variable), size = 3, show.legend = FALSE) +
+    facet_wrap(~ Fluid, scales = "free_y") +
+    labs(
+      x = "Variable",
+      y = "Variance Explained (%)",
+      title = "Variance explained by each covariate",
+      subtitle = "Bars = median, points = mean"
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    ) +
+    scale_fill_brewer(palette = "Set2") +
+    scale_color_brewer(palette = "Set2") # match dots to bars
+}
+
 ###############################################
 ### 1. Assign Group Labels
 ###############################################
@@ -168,6 +277,11 @@ protein_data_IDs <- protein_data %>%
   filter(SampleType == "Sample") %>%
   select(SampleName, SampleMatrixType, Target, UniProtID, ProteinName, NPQ) %>%
   left_join(samples_ID_type %>% rename(SampleName = `Sample ID`), by = "SampleName")
+
+protein_data_CTR_PGMC_IDs <- protein_data %>%
+  filter(SampleType == "Sample") %>%
+  select(SampleName, SampleMatrixType, Target, UniProtID, ProteinName, NPQ) %>%
+  left_join(samples_PGMC_CTR_ID_type %>% rename(SampleName = `Sample ID`), by = "SampleName")
 
 # get count table of APOE
 table_APOE = protein_data_IDs %>%
@@ -199,7 +313,59 @@ carrier_table <- table_APOE %>%
 writexl::write_xlsx(carrier_table,"results/APOE4_carriers.xlsx")
 
 ###############################################
-### 4. Sample Counts Across Fluids
+### 3. Check effect of each covariate on the NPQ
+###############################################
+
+covariate_missing = protein_data_IDs %>%
+  filter(!is.na(type)) %>%
+  left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)) %>%
+  mutate(center = dplyr::case_when(
+    grepl("TR", ParticipantCode) ~ "Turkey",
+    grepl("CH", ParticipantCode) ~ "Switzerland",
+    grepl("DE", ParticipantCode) ~ "Germany",
+    grepl("SK", ParticipantCode) ~ "Slovakia",
+    grepl("FR", ParticipantCode) ~ "France",
+    grepl("IL", ParticipantCode) ~ "Israel",
+    TRUE                 ~ NA_character_
+  )) %>%
+  group_by(Target) %>%
+  summarise(
+    n = n(),
+    age_missing = sum(is.na(age)),
+    sex_missing = sum(is.na(sex)),
+    center_missing = sum(is.na(center))
+  )
+
+df_f = protein_data_IDs %>%
+  filter(!is.na(type)) %>%
+  left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)) %>%
+  mutate(center = dplyr::case_when(
+    grepl("TR", ParticipantCode) ~ "Turkey",
+    grepl("CH", ParticipantCode) ~ "Switzerland",
+    grepl("DE", ParticipantCode) ~ "Germany",
+    grepl("SK", ParticipantCode) ~ "Slovakia",
+    grepl("FR", ParticipantCode) ~ "France",
+    grepl("IL", ParticipantCode) ~ "Israel",
+    TRUE                 ~ NA_character_
+  ))
+
+lm_full <- lm(NPQ ~ type + age + sex + center, data = df_f)
+summary(lm_full) # the covariates are significantly effecting the NPQ
+
+lm_reduced <- lm(NPQ ~ type + age + sex, data = df_f)
+anova(lm_reduced, lm_full)
+
+# check variance by fluid and each covariate
+var_fluid_df <- variance_by_fluid(df_f, value_col = "NPQ", covariates = c("age","sex","center"))
+
+writexl::write_xlsx(var_fluid_df$summary,"results/variance_by_covariate_fluid.xlsx")
+
+pdf("plots/variance_covariate.pdf")
+plot_variance_by_fluid(var_fluid_df$summary)
+dev.off()
+
+###############################################
+### 5. Sample Counts Across Fluids
 ###############################################
 
 fluids <- c("SERUM", "PLASMA", "CSF")
@@ -211,12 +377,12 @@ sample_counts <- bind_rows(
 writexl::write_xlsx(sample_counts, "results/samples_biofluid_overview.xlsx")
 
 ###############################################
-### 5. Correlation Between Fluids
+### 6. Correlation Between Fluids
 ###############################################
 
-df_SERUM  <- get_mean_per_fluid(protein_data, "SERUM")
-df_PLASMA <- get_mean_per_fluid(protein_data, "PLASMA")
-df_CSF    <- get_mean_per_fluid(protein_data, "CSF")
+df_SERUM  <- get_mean_per_fluid(protein_data_IDs %>% filter(!is.na(type)), "SERUM")
+df_PLASMA <- get_mean_per_fluid(protein_data_IDs %>% filter(!is.na(type)), "PLASMA")
+df_CSF    <- get_mean_per_fluid(protein_data_IDs %>% filter(!is.na(type)), "CSF")
 
 p1 = make_corr(df_PLASMA, df_SERUM,  "PLASMA", "SERUM", "plots/correlation_plasma_serum.pdf")
 p2 = make_corr(df_SERUM,  df_CSF,    "SERUM",  "CSF",   "plots/correlation_serum_CSF.pdf")
@@ -229,7 +395,7 @@ print(combined)
 dev.off()
 
 ###############################################
-### 6. Target Detectability per Fluid & Plate
+### 7. Target Detectability per Fluid & Plate
 ###############################################
 
 td <- protein_data  %>%
@@ -262,13 +428,13 @@ for (fluid in fluids) {
 }
 
 ###############################################
-### 7. Explore Normalization
+### 8. Explore Normalization
 ###############################################
 protein_data_median_all_together = protein_data %>%
   group_by(Target, UniProtID,PlateID) %>%
   summarise(median_NPQ = median(NPQ), .groups = "drop")
 
-df_delta_all_together = delta_median_per_fluid(protein_data_median_all_together,"Plate01")
+df_delta_all_together = delta_median_per_fluid(protein_data_median_all_together,"P004_Plate1_090225_CB1.xml")
 
 protein_data_norm_all_together = protein_data %>%
   left_join(df_delta_all_together) %>%
@@ -276,7 +442,7 @@ protein_data_norm_all_together = protein_data %>%
   select(-delta)
 
 #################################################################
-### 8. NPQ Distributions by Plate original and normalized data
+### 9. NPQ Distributions by Plate original and normalized data
 #################################################################
 protein_long_alltogether <- protein_data_norm_all_together %>%
   mutate(
@@ -331,7 +497,7 @@ for (target in unique_targets) {
 
 
 #################################################################
-### 9. Project-LOD of original and  normalized data
+### 10. Project-LOD of original and  normalized data
 #################################################################
 
 ##############
@@ -390,15 +556,15 @@ target_detectability_extra = target_detectability %>%
   arrange(Target)
 
 #################################################################
-### 10. Check targets' detectability across samples
+### 11. Check targets' detectability across samples
 #################################################################
 protein_data_with_lod <- protein_data %>%
   left_join(target_detectability_extra %>%
               select(Target,ProjectLOD) %>% 
               distinct()) %>%
   mutate(below_lod = ifelse(Target %in% c("APOE","CRP"),
-                NPQ > ProjectLOD,
-               NPQ < ProjectLOD))
+                            NPQ > ProjectLOD,
+                            NPQ < ProjectLOD))
 
 detectability_summary <- protein_data_with_lod %>%
   group_by(SampleMatrixType, Target) %>%
