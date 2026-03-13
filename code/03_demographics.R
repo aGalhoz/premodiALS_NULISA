@@ -46,7 +46,7 @@ Sex_PGMC <- Sex_age_all_participants %>%
   select(Pseudonyme,sex) %>%
   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "PGMC",]$PatientID %>%unique())))  %>%
   mutate(patient_group = rep("PGMC"))
-  
+
 skim(Sex_ALS)
 skim(Sex_CTR)
 skim(Sex_mimic)
@@ -87,7 +87,7 @@ clinical_table_extended <- clinical_table %>%
   distinct() %>%
   group_by(PatientID, ParticipantCode) %>%
   mutate(has_mut = any(MutationType == 1)) %>%
- # ungroup() %>%
+  # ungroup() %>%
   mutate(
     Gene = ifelse(!has_mut, NA, Gene),
     MutationType = ifelse(!has_mut, NA, MutationType),
@@ -136,7 +136,7 @@ clinical_table_slim <- clinical_table_slim %>%
   select(PatientID,ParticipantCode,type,Comment,age,sex,MutationType,PreciseMutation,
          Erfassungsdatum,ALSFRS,DatePhenoconversion,contains("LFU")) %>%
   group_by(PatientID, ParticipantCode, type, age, sex,MutationType, PreciseMutation) %>% 
- # arrange(Erfassungsdatum, .by_group = TRUE) %>%  # make sure order is consistent
+  # arrange(Erfassungsdatum, .by_group = TRUE) %>%  # make sure order is consistent
   mutate(obs = row_number()) %>%
   pivot_wider(
     names_from = obs,

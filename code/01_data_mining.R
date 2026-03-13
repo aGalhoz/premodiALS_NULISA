@@ -146,7 +146,6 @@ delta_median_per_fluid <- function(df,plate_ref){
     select(Target,PlateID,delta)
 }
 
-
 ## 8. Get variance by fluid in respect to the covariates
 variance_by_fluid = function(df, value_col = "NPQ", covariates = c("age","sex","center")) {
   
@@ -283,51 +282,21 @@ protein_data_CTR_PGMC_IDs <- protein_data %>%
   select(SampleName, SampleMatrixType, Target, UniProtID, ProteinName, NPQ) %>%
   left_join(samples_PGMC_CTR_ID_type %>% rename(SampleName = `Sample ID`), by = "SampleName")
 
-# get count table of APOE
-table_APOE = protein_data_IDs %>%
-  left_join(samples_PGMC_CTR_ID_type %>% rename(subtype = type,
-                                                SampleName = `Sample ID`)) %>%
-  mutate(
-    subtype = ifelse(subtype == "CTR" | is.na(subtype), "No subtype",
-                     ifelse(subtype %in% c("FUS","UBQLN2","FIG4","other"),"others",subtype))) %>%
-  filter(Target == "APOE4") %>%
-  mutate(APOE_status =  ifelse(NPQ > 10, "Carrier",ifelse(NPQ <= 10, "Non-carrier",NA)))
-
-table_APOE_notNA <- table_APOE %>% filter(!is.na(type))
-table_APOE_NA <- table_APOE %>% filter(is.na(type)) %>%
-  select(-PatientID,-type) %>%
-  left_join(clinical_table_slim %>% select(PatientID,ParticipantCode,type))
-table_APOE <- rbind(table_APOE_notNA,table_APOE_NA[,match(colnames(table_APOE_NA),colnames(table_APOE_notNA))])
-
-carrier_table <- table_APOE %>%
-  group_by(SampleMatrixType, type, subtype, APOE_status) %>%
-  summarise(n = n(), .groups = "drop") %>%
-  tidyr::pivot_wider(
-    names_from = APOE_status,
-    values_from = n,
-    values_fill = 0
-  ) %>%
-  mutate(
-    Total = Carrier + `Non-carrier`
-  )
-writexl::write_xlsx(carrier_table,"results/APOE4_carriers.xlsx")
-
 ###############################################
 ### 3. Check effect of each covariate on the NPQ
 ###############################################
-
 covariate_missing = protein_data_IDs %>%
   filter(!is.na(type)) %>%
   left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)) %>%
   mutate(center = dplyr::case_when(
-    grepl("TR", ParticipantCode) ~ "Turkey",
-    grepl("CH", ParticipantCode) ~ "Switzerland",
-    grepl("DE", ParticipantCode) ~ "Germany",
-    grepl("SK", ParticipantCode) ~ "Slovakia",
-    grepl("FR", ParticipantCode) ~ "France",
-    grepl("IL", ParticipantCode) ~ "Israel",
-    TRUE                 ~ NA_character_
-  )) %>%
+           grepl("TR", ParticipantCode) ~ "Turkey",
+           grepl("CH", ParticipantCode) ~ "Switzerland",
+           grepl("DE", ParticipantCode) ~ "Germany",
+           grepl("SK", ParticipantCode) ~ "Slovakia",
+           grepl("FR", ParticipantCode) ~ "France",
+           grepl("IL", ParticipantCode) ~ "Israel",
+           TRUE                 ~ NA_character_
+         )) %>%
   group_by(Target) %>%
   summarise(
     n = n(),
@@ -363,6 +332,7 @@ writexl::write_xlsx(var_fluid_df$summary,"results/variance_by_covariate_fluid.xl
 pdf("plots/variance_covariate.pdf")
 plot_variance_by_fluid(var_fluid_df$summary)
 dev.off()
+
 
 ###############################################
 ### 5. Sample Counts Across Fluids

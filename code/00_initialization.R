@@ -18,8 +18,12 @@ library(ggExtra)
 library(RColorBrewer)
 library(gridExtra)
 library(grid)
+library(limma)
 library(showtext)
+library(stringr)
 showtext_auto()  # ensures UTF-8 + font rendering
+install.packages("ggnewscale")
+library(ggnewscale)
 
 ### Directories
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
@@ -31,14 +35,15 @@ dir.create(file.path(getwd(),'plots'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/boxplots_plasma'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/boxplots_CSF'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/boxplots_SERUM'), showWarnings = FALSE)
-dir.create(file.path(getwd(),'plots/PCA_plots'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/NPQ_fluid_plate'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/volcano_plots'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/PCA_plots'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/signed_plots'), showWarnings = FALSE)
 
 ### Collect data
 # new documentation from 19-02-2026
 GeneralDocumentation <- read_delim("data input/export-2026-02-19-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK/GeneralDocumentation.csv", 
-           delim = ";", escape_double = FALSE, trim_ws = TRUE)
+                                   delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
 # IDS of patients
 # -> ALS patients
@@ -190,7 +195,7 @@ all_participants_IDs = do.call("rbind",
                                       rename(type = mutation)))
 all_participants_IDs <- rbind(all_participants_IDs,
                               c("XH4W23T7","FR108","C9orf72"))
-                              
+
 writexl::write_xlsx(all_participants_IDs,"results/all_participants_IDs.xlsx")
 
 # information on sample IDs
@@ -205,19 +210,10 @@ sample_ID_info$`Optional Informarion (patient ID)` <- ifelse(sample_ID_info$`Sam
        sample_ID_info$`Optional Informarion (patient ID)`)
 
 # data from CSF, plasma and serum fluids
-protein_data <- read_excel("data input/P004_BSHRI_NULISAseq_CNSDiseasePanel_NPQCounts_2025_03_10.xlsx")
-
-# new data from Antonia
-protein_data_updated <- read_excel("data input/UPDATED_P004_NPQ.xlsx")
-protein_data_old <- protein_data_updated
-
-# new data from Marisa 04-09-2025
-protein_data_updated <- read_excel("data input/Updated_P004_NPQ_09042025.xlsx")
-
-protein_data <- protein_data_updated
+protein_data <- read_excel("data input/P004_BSHRI_NULISAseq_InflammationPanel_NPQCounts_2025_10_10.xlsx")
 
 # target detectability
-target_detectability <- read_excel("data input/Updated_P004_NPQ_09042025.xlsx", 
+target_detectability <- read_excel("data input/P004_BSHRI_NULISAseq_InflammationPanel_NPQCounts_2025_10_10.xlsx",
            sheet = "Target Detectability")
 
 # Patient age and sex
@@ -236,37 +232,37 @@ participants_ALS_mimic = read_excel("data input/recruited participants.xlsx",
          age = `Age...7`)
 
 participants_Turkey = read_excel("data input/recruited participants.xlsx", 
-                                     sheet = "Turkey") %>%
+                                 sheet = "Turkey") %>%
   select(Pseudonyme,Sex,`Age...7`) %>%
   rename(sex = Sex,
          age = `Age...7`)
 participants_Slovakia = read_excel("data input/recruited participants.xlsx", 
-                                 sheet = "Slovakia") %>%
+                                   sheet = "Slovakia") %>%
   select(Pseudonyme,Sex,`Age...7`) %>%
   rename(sex = Sex,
          age = `Age...7`)
 participants_Germany = read_excel("data input/recruited participants.xlsx", 
-                                   sheet = "Germany - Munich") %>%
+                                  sheet = "Germany - Munich") %>%
   select(Pseudonyme,Sex,`Age...7`) %>%
   rename(sex = Sex,
          age = `Age...7`)
 participants_Switzerland = read_excel("data input/recruited participants.xlsx", 
-                                   sheet = "Switzerland") %>%
+                                      sheet = "Switzerland") %>%
   select(Pseudonyme,Sex,`Age...7`) %>%
   rename(sex = Sex,
          age = `Age...7`)
 participants_Israel = read_excel("data input/recruited participants.xlsx", 
-                                   sheet = "Israel") %>%
+                                 sheet = "Israel") %>%
   select(Pseudonyme,Sex,`Age...7`) %>%
   rename(sex = Sex,
          age = `Age...7`)
 participants_France = read_excel("data input/recruited participants.xlsx", 
-                                   sheet = "France") %>%
+                                 sheet = "France") %>%
   select(Pseudonyme,Sex,`Age...7`) %>%
   rename(sex = Sex,
          age = `Age...7`)
 participants_Czech = read_excel("data input/recruited participants.xlsx", 
-                                   sheet = "Czech Republic") %>%
+                                sheet = "Czech Republic") %>%
   select(Pseudonyme,Sex,`Age...7`) %>%
   rename(sex = Sex,
          age = `Age...7`)
@@ -306,9 +302,9 @@ all_participants_IDs_final <- all_participants_IDs %>%
   select(-PGMC_mutation, -ALS_mutation)
 
 all_participants_IDs_final <- merge(all_participants_IDs_final,
-                              Sex_age_all_participants %>% rename(PatientID = Pseudonyme),
-                              by = colnames(all_participants_IDs)[1],
-                              all.x = TRUE) %>%
+                                    Sex_age_all_participants %>% rename(PatientID = Pseudonyme),
+                                    by = colnames(all_participants_IDs)[1],
+                                    all.x = TRUE) %>%
   filter(type %in% c("ALS","CTR","mimic","PGMC","SYMP",NA))
 
 writexl::write_xlsx(all_participants_IDs_final,"results/all_participants_IDs_final.xlsx")
