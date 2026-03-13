@@ -320,3 +320,6 @@ ECAS = read_delim("data input/export-2026-03-12-PREMODIALS-AKDTR_BRNO_CHUFR_HMCI
 # spinal/bulbar 
 site_onset = read_excel("data input/all_participants_IDs.xlsx")
 
+# disease duration
+disease_duration =  read_excel("data input/all_participants_ID_visits.xlsx")
+
