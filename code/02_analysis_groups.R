@@ -138,8 +138,8 @@ format_p <- function(p, digits = 3) {
 }
 
 run_stats_for_fluid_old <- function(df, fluid, value_col = "NPQ", 
-                                adjust = FALSE,
-                                covariates = c("age", "sex","center")) {
+                                    adjust = FALSE,
+                                    covariates = c("age", "sex","center")) {
   
   df_f <- df %>%
     filter(SampleMatrixType == fluid) %>%
@@ -1224,18 +1224,45 @@ results_ALL <- run_full_pipeline(
   sample_map      = samples_ID_type %>% 
     mutate(subtype = type,
            center = dplyr::case_when(
-             grepl("TR", ParticipantCode) ~ "Turkey",
-             grepl("CH", ParticipantCode) ~ "Switzerland",
-             grepl("DE", ParticipantCode) ~ "Germany",
-             grepl("SK", ParticipantCode) ~ "Slovakia",
-             grepl("FR", ParticipantCode) ~ "France",
-             grepl("IL", ParticipantCode) ~ "Israel",
-             TRUE                 ~ NA_character_
-           )) %>%
+           grepl("TR", ParticipantCode) ~ "Turkey",
+           grepl("CH", ParticipantCode) ~ "Switzerland",
+           grepl("DE", ParticipantCode) ~ "Germany",
+           grepl("SK", ParticipantCode) ~ "Slovakia",
+           grepl("FR", ParticipantCode) ~ "France",
+           grepl("IL", ParticipantCode) ~ "Israel",
+           TRUE                 ~ NA_character_
+         )) %>%
     left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)),
   td              = td %>% left_join(target_detectability_extra %>% select(Target,ProjectLOD)) %>%
     select(SampleMatrixType,Target,TargetLOD_NPQ,ProjectLOD) %>% distinct(),
-  prefix          = "ALLsamples")
+  prefix          = "ALLsamples"
+)
+
+## 1.1 All samples (high detectable - deprecated)
+# protein_data_high_detectability = protein_data %>%
+#   left_join(detectability_summary %>% 
+#               select(SampleMatrixType,Target,detectability)) %>%
+#   filter(detectability == "high")
+#   
+# results_ALL_high_detectability <- run_full_pipeline(
+#   protein_data    = protein_data_high_detectability,
+#   sample_map      = samples_ID_type %>% 
+#     mutate(subtype = type,
+#            center = dplyr::case_when(
+#              grepl("TR", ParticipantCode) ~ "Turkey",
+#              grepl("CH", ParticipantCode) ~ "Switzerland",
+#              grepl("DE", ParticipantCode) ~ "Germany",
+#              grepl("SK", ParticipantCode) ~ "Slovakia",
+#              grepl("FR", ParticipantCode) ~ "France",
+#              grepl("IL", ParticipantCode) ~ "Israel",
+#              TRUE                 ~ NA_character_
+#            )) %>%
+#     left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)),
+#   td              = td %>% left_join(target_detectability_extra %>% select(Target,ProjectLOD)) %>%
+#     select(SampleMatrixType,Target,TargetLOD_NPQ,ProjectLOD) %>% distinct(),
+#   prefix          = "ALLsamples",
+#   high_detectability = TRUE
+# )
 
 ## 2. PGMC mutation analysis 
 results_PGMC <- run_full_pipeline(
@@ -1258,6 +1285,29 @@ results_PGMC <- run_full_pipeline(
     select(SampleMatrixType,Target,TargetLOD_NPQ,ProjectLOD) %>% distinct(),
   prefix       = "PGMCvsCTR"
 )
+
+## 2.1 All samples (high detectable - deprecated)
+# results_PGMC_high_detectability <- run_full_pipeline(
+#   protein_data = protein_data_high_detectability,
+#   sample_map   = samples_PGMC_CTR_ID_type %>% 
+#     mutate(subtype = type,
+#            center = dplyr::case_when(
+#              grepl("TR", ParticipantCode) ~ "Turkey",
+#              grepl("CH", ParticipantCode) ~ "Switzerland",
+#              grepl("DE", ParticipantCode) ~ "Germany",
+#              grepl("SK", ParticipantCode) ~ "Slovakia",
+#              grepl("FR", ParticipantCode) ~ "France",
+#              grepl("IL", ParticipantCode) ~ "Israel",
+#              TRUE                 ~ NA_character_
+#            )) %>%
+#     #filter(!type %in% c("FUS","UBQLN2","FIG4","other")),
+#     mutate(type = ifelse(type %in% c("FUS","UBQLN2","FIG4","other"),"others",type)) %>%
+#     left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)),
+#   td           = td %>% left_join(target_detectability_extra %>% select(Target,ProjectLOD)) %>%
+#     select(SampleMatrixType,Target,TargetLOD_NPQ,ProjectLOD) %>% distinct(),
+#   prefix       = "PGMCvsCTR",
+#   high_detectability = TRUE
+# )
 
 ## 3. Final boxplot compilation with raw and adjusted values for each protein 
 all_proteins <- unique(results_ALL$PLASMA$data$Target)
@@ -1409,7 +1459,7 @@ plots_subtype[[which(names(pca_results_subtype)=="CSF")]]
 dev.off()
 
 plots_subtype_label <- lapply(names(pca_results_subtype), 
-                              function(m) plot_pca(pca_results_subtype[[m]], m,label = TRUE))
+                        function(m) plot_pca(pca_results_subtype[[m]], m,label = TRUE))
 
 pdf("plots/PCA_plots/PCA_SERUM_subtype_label.pdf", width = 8, height = 6.5) 
 plots_subtype_label[[which(names(pca_results_subtype)=="SERUM")]] 
@@ -1422,7 +1472,7 @@ plots_subtype_label[[which(names(pca_results_subtype)=="CSF")]]
 dev.off()
 
 plots_center <- lapply(names(pca_results_subtype), 
-                       function(m) plot_pca(pca_results_subtype[[m]], m,type_center = "center"))
+                        function(m) plot_pca(pca_results_subtype[[m]], m,type_center = "center"))
 
 pdf("plots/PCA_plots/PCA_SERUM_center.pdf", width = 8, height = 6.5) 
 plots_center[[which(names(pca_results_subtype)=="SERUM")]] 
@@ -1435,8 +1485,8 @@ plots_center[[which(names(pca_results_subtype)=="CSF")]]
 dev.off()
 
 plots_center_label <- lapply(names(pca_results_subtype), 
-                             function(m) plot_pca(pca_results_subtype[[m]], m,
-                                                  type_center = "center",label = TRUE))
+                       function(m) plot_pca(pca_results_subtype[[m]], m,
+                                            type_center = "center",label = TRUE))
 
 pdf("plots/PCA_plots/PCA_SERUM_center_label.pdf", width = 8, height = 6.5) 
 plots_center_label[[which(names(pca_results_subtype)=="SERUM")]] 
@@ -1453,7 +1503,7 @@ pca_results_subtype_adj <- lapply(matrices, function(m)
 names(pca_results_subtype_adj) <- matrices
 
 plots_subtype_adj <- lapply(names(pca_results_subtype_adj), 
-                            function(m) plot_pca(pca_results_subtype_adj[[m]], m))
+                        function(m) plot_pca(pca_results_subtype_adj[[m]], m))
 
 pdf("plots/PCA_plots/PCA_SERUM_subtype_adjusted.pdf", width = 8, height = 6.5) 
 plots_subtype_adj[[which(names(pca_results_subtype_adj)=="SERUM")]] 
@@ -1466,8 +1516,8 @@ plots_subtype_adj[[which(names(pca_results_subtype_adj)=="CSF")]]
 dev.off()
 
 plots_subtype_adj_label <- lapply(names(pca_results_subtype_adj), 
-                                  function(m) plot_pca(pca_results_subtype_adj[[m]], m,
-                                                       label = TRUE))
+                            function(m) plot_pca(pca_results_subtype_adj[[m]], m,
+                                                 label = TRUE))
 
 pdf("plots/PCA_plots/PCA_SERUM_subtype_adjusted_label.pdf", width = 8, height = 6.5) 
 plots_subtype_adj_label[[which(names(pca_results_subtype_adj)=="SERUM")]] 
@@ -1480,7 +1530,7 @@ plots_subtype_adj_label[[which(names(pca_results_subtype_adj)=="CSF")]]
 dev.off()
 
 plots_center_adj <- lapply(names(pca_results_subtype_adj), 
-                           function(m) plot_pca(pca_results_subtype_adj[[m]], m,type_center = "center"))
+                       function(m) plot_pca(pca_results_subtype_adj[[m]], m,type_center = "center"))
 
 pdf("plots/PCA_plots/PCA_SERUM_center_adjusted.pdf", width = 8, height = 6.5) 
 plots_center_adj[[which(names(pca_results_subtype_adj)=="SERUM")]] 
@@ -1493,8 +1543,8 @@ plots_center_adj[[which(names(pca_results_subtype_adj)=="CSF")]]
 dev.off()
 
 plots_center_adj_label <- lapply(names(pca_results_subtype_adj), 
-                                 function(m) plot_pca(pca_results_subtype_adj[[m]], m,
-                                                      type_center = "center",label = TRUE))
+                           function(m) plot_pca(pca_results_subtype_adj[[m]], m,
+                                                type_center = "center",label = TRUE))
 
 pdf("plots/PCA_plots/PCA_SERUM_center_adjusted_label.pdf", width = 8, height = 6.5) 
 plots_center_adj_label[[which(names(pca_results_subtype_adj)=="SERUM")]] 
