@@ -23,6 +23,11 @@ library(showtext)
 showtext_auto()  # ensures UTF-8 + font rendering
 install.packages("ggnewscale")
 library(ggnewscale)
+library(glmnet)
+library(pROC)
+library(caret)
+library(RColorBrewer)
+library(scales)
 
 ### Directories
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
@@ -38,11 +43,17 @@ dir.create(file.path(getwd(),'plots/PCA_plots'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/volcano_plots'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/signed_plots'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/NPQ_fluid_plate'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/ML'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/ML/high_detectable'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/ML/without_NEFL'), showWarnings = FALSE)
 
 ### Collect data
 # new documentation from 12-03-2026
-GeneralDocumentation <- read_delim("data input/export-2026-03-20-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK_267participants/GeneralDocumentation.csv", 
+GeneralDocumentation <- read_delim("data input/export-2026-03-24-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK_267participants/GeneralDocumentation.csv", 
            delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+GeneralDocumentation_old <- read_delim("data input/export-2025-08-27-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK/GeneralDocumentation.csv", 
+                                   delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
 # IDS of patients
 # -> ALS patients
@@ -50,6 +61,17 @@ ALS_ID <- GeneralDocumentation %>%
   filter((ALSuncertainty == 1 | ALSFUdiagnosis == 1) & ALSFUdiagnosis %in% c(1,3,NA)) %>%
   select(PatientID,ParticipantCode) %>% 
   mutate(type = rep("ALS"))
+
+ALS_ID_old <- GeneralDocumentation_old %>%
+  filter((ALSuncertainty == 1 | ALSFUdiagnosis == 1) & ALSFUdiagnosis %in% c(1,3,NA)) %>%
+  select(PatientID,ParticipantCode) %>% 
+  mutate(type = rep("ALS"))
+
+ALS_ID[!ALS_ID$ParticipantCode %in% ALS_ID_old$ParticipantCode,]
+ALS_ID_old[!ALS_ID_old$ParticipantCode %in% ALS_ID$ParticipantCode,]
+
+ALS_ID <- ALS_ID %>%
+  filter(!ParticipantCode %in% c("DE320","TR310","TR302"))
 
 # -> CTR 
 CTR_ID <- GeneralDocumentation %>%
@@ -65,6 +87,12 @@ PGMC_ID <- GeneralDocumentation %>%
 
 # -> Mimic
 mimic_ID <- GeneralDocumentation %>%
+  filter((ALSuncertainty == 2 | ALSFUdiagnosis == 2) & ALSFUdiagnosis %in% c(2,NA)) %>%
+  select(PatientID,ParticipantCode) %>% 
+  mutate(type = rep("mimic"))
+
+
+mimic_ID_old <- GeneralDocumentation_old %>%
   filter((ALSuncertainty == 2 | ALSFUdiagnosis == 2) & ALSFUdiagnosis %in% c(2,NA)) %>%
   select(PatientID,ParticipantCode) %>% 
   mutate(type = rep("mimic"))
@@ -329,10 +357,8 @@ Sex_age_all_participants = site_onset %>%
   rename(Pseudonyme = PatientID)
 
 all_participants_IDs_final <- merge(all_participants_IDs_final,
-                                    Sex_age_all_participants %>% rename(PatientID = Pseudonyme),
-                                    by = colnames(all_participants_IDs)[1],
-                                    all.x = TRUE) %>%
-  filter(type %in% c("ALS","CTR","mimic","PGMC","SYMP",NA))
+                                    Sex_age_all_participants %>% rename(PatientID = Pseudonyme)) %>%
+  filter(type %in% c("ALS","CTR","mimic","PGMC","SYMP",NA,"NA"))
 
 writexl::write_xlsx(all_participants_IDs_final,"results/all_participants_IDs_final.xlsx")
 

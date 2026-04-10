@@ -262,12 +262,12 @@ plot_variance_by_fluid = function(summary_df) {
 samples_ID_type <- sample_ID_info %>%
   rename(ParticipantCode = `Optional Informarion (patient ID)`) %>%
   left_join(bind_rows(ALS_ID, CTR_ID, PGMC_ID, mimic_ID), by = "ParticipantCode") %>%
-  filter(ParticipantCode != "DE320")
+  filter(!ParticipantCode %in% c("DE320","TR310","TR302"))
 
 samples_PGMC_CTR_ID_type = sample_ID_info %>%
   rename(ParticipantCode = `Optional Informarion (patient ID)`) %>%
   left_join(bind_rows(CTR_ID,PGMC_mutations_ID), by = "ParticipantCode") %>%
-  filter(ParticipantCode != "DE320")
+  filter(!ParticipantCode %in% c("DE320","TR310","TR302"))
 
 ###############################################
 ### 2. Merge protein data with sample type
@@ -316,26 +316,6 @@ writexl::write_xlsx(carrier_table,"results/APOE4_carriers.xlsx")
 ### 3. Check effect of each covariate on the NPQ
 ###############################################
 
-covariate_missing = protein_data_IDs %>%
-  filter(!is.na(type)) %>%
-  left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)) %>%
-  mutate(center = dplyr::case_when(
-    grepl("TR", ParticipantCode) ~ "Turkey",
-    grepl("CH", ParticipantCode) ~ "Switzerland",
-    grepl("DE", ParticipantCode) ~ "Germany",
-    grepl("SK", ParticipantCode) ~ "Slovakia",
-    grepl("FR", ParticipantCode) ~ "France",
-    grepl("IL", ParticipantCode) ~ "Israel",
-    TRUE                 ~ NA_character_
-  )) %>%
-  group_by(Target) %>%
-  summarise(
-    n = n(),
-    age_missing = sum(is.na(age)),
-    sex_missing = sum(is.na(sex)),
-    center_missing = sum(is.na(center))
-  )
-
 df_f = protein_data_IDs %>%
   filter(!is.na(type)) %>%
   left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)) %>%
@@ -348,6 +328,15 @@ df_f = protein_data_IDs %>%
     grepl("IL", ParticipantCode) ~ "Israel",
     TRUE                 ~ NA_character_
   ))
+
+covariate_missing = df_f %>%
+  group_by(Target) %>%
+  summarise(
+    n = n(),
+    age_missing = sum(is.na(age)),
+    sex_missing = sum(is.na(sex)),
+    center_missing = sum(is.na(center))
+  )
 
 effects_per_fluid <- df_f %>%
   group_by(SampleMatrixType) %>%
@@ -388,11 +377,20 @@ dev.off()
 
 fluids <- c("SERUM", "PLASMA", "CSF")
 
-sample_counts <- bind_rows(
+c <- bind_rows(
   lapply(fluids, function(f) count_samples_per_fluid(protein_data_IDs, f))
 )
 
-writexl::write_xlsx(sample_counts, "results/samples_biofluid_overview.xlsx")
+sample_counts_PGMC <- bind_rows(
+  lapply(fluids, function(f) count_samples_per_fluid(protein_data_CTR_PGMC_IDs, f))
+) %>%
+  filter(type != "CTR")
+
+sample_counts_all = rbind(sample_counts,
+                          sample_counts_PGMC) %>%
+  arrange(biofluid)
+
+writexl::write_xlsx(sample_counts_all, "results/samples_biofluid_overview.xlsx")
 
 ###############################################
 ### 6. Correlation Between Fluids

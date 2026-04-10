@@ -1327,7 +1327,7 @@ td_joined <- td %>%
 
 # 3.1: raw values
 cairo_pdf("plots/combined_boxplots_all_fluids_groups_raw.pdf",
-          width = 14, height = 9, family = "DejaVu Sans")
+          width = 14, height = 12, family = "DejaVu Sans")
 
 for(protein_name in all_proteins) {
   
@@ -1368,7 +1368,7 @@ dev.off()
 
 # 3.2: adjusted values
 cairo_pdf("plots/combined_boxplots_all_fluids_groups_adjusted.pdf",
-          width = 14, height = 9, family = "DejaVu Sans")
+          width = 14, height = 12, family = "DejaVu Sans")
 
 for(protein_name in all_proteins) {
   

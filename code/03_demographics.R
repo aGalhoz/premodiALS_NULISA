@@ -177,6 +177,21 @@ skim(ALSFRS_NULISA_V0 %>% filter(type == "PGMC") %>% pull(ALSFRS_1))
 skim(ALSFRS_NULISA_V0 %>% filter(type == "ALS") %>% pull(ALSFRS_1))
 skim(ALSFRS_NULISA_V0 %>% filter(type == "mimic") %>% pull(ALSFRS_1))
 
+## stats for disease duration
+disease_duration_NULISA = disease_duration %>%
+  filter(ParticipantCode  %in% samples_ID_type$ParticipantCode) %>%
+  select(PatientID,type,`Disease duration`)
+
+# stats per group
+skim(disease_duration_NULISA %>% filter(type == "ALS") %>% pull(`Disease duration`))
+skim(disease_duration_NULISA %>% filter(type == "mimic") %>% pull(`Disease duration`))
+
+# site of onset
+site_onset_NULISA = site_onset %>%
+  filter(ParticipantCode  %in% samples_ID_type$ParticipantCode)  %>%
+  select(PatientID,type,SiteDiseaseOnset)
+table(site_onset_NULISA$type,site_onset_NULISA$SiteDiseaseOnset)
+
 ## ECAS info
 ECAS_table = clinical_table_slim %>%
   select(PatientID,ParticipantCode,type,age,sex) %>%
