@@ -28,6 +28,8 @@ library(pROC)
 library(caret)
 library(RColorBrewer)
 library(scales)
+library(ComplexHeatmap)
+library(circlize)
 
 ### Directories
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
