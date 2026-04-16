@@ -46,8 +46,10 @@ dir.create(file.path(getwd(),'plots/volcano_plots'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/signed_plots'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/NPQ_fluid_plate'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/ML'), showWarnings = FALSE)
-dir.create(file.path(getwd(),'plots/ML/high_detectable'), showWarnings = FALSE)
-dir.create(file.path(getwd(),'plots/ML/without_NEFL'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/ML/Lasso'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/ML/Elastic Net'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/ML/Lasso/high_detectable'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/ML/Lasso/without_NEFL'), showWarnings = FALSE)
 
 ### Collect data
 # new documentation from 12-03-2026
