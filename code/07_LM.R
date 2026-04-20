@@ -449,6 +449,367 @@ feature_importance = function(ml_object,
   return(weight)
 }
 
+# ================================================
+# Check the best protein signature based on LOOCV
+# ================================================
+find_optimal_signature <- function(results_ALL, 
+                                   ranked_proteins, 
+                                   fluid = "SERUM", 
+                                   output_prefix = "optimization_",
+                                   nfolds = NULL) {
+  
+  # data prep
+  data_train <- results_ALL[[fluid]]$data_adjusted %>%
+    filter(type %in% c("ALS", "CTR"), Target %in% ranked_proteins) %>%
+    select(SampleName, Target, NPQ_adj, type) %>%
+    pivot_wider(names_from = Target, values_from = NPQ_adj)
+  
+  X <- as.matrix(data_train[, ranked_proteins])
+  y <- ifelse(data_train$type == "ALS", 1, 0)
+  X_scaled <- scale(X)
+  
+  if (is.null(nfolds)) nfolds <- length(y)
+  
+  # performance for each protein in the list
+  perf_results <- data.frame(n_proteins = 1:length(ranked_proteins), 
+                             protein_added = ranked_proteins,
+                             auc = NA)
+  
+  message("Optimizing signature size...")
+  
+  for (i in 1:length(ranked_proteins)) {
+    current_vars <- ranked_proteins[1:i]
+    X_sub <- X_scaled[, current_vars, drop = FALSE]
+    
+    if (i == 1) {
+      probs_vec <- numeric(length(y)) 
+      
+      for (j in 1:length(y)) {
+        train_X <- X_sub[-j, , drop = FALSE]
+        train_y <- y[-j]
+        test_X  <- X_sub[j, , drop = FALSE]
+        
+        # Convert to data frame for glm
+        df_train <- data.frame(status = train_y, protein = as.numeric(train_X))
+        df_test  <- data.frame(protein = as.numeric(test_X))
+        
+        fit <- suppressWarnings(glm(status ~ protein, data = df_train, family = "binomial"))
+        probs_vec[j] <- predict(fit, newdata = df_test, type = "response")
+      }
+      
+      # Calculate AUC
+      perf_results$auc[i] <- as.numeric(auc(roc(y, probs_vec, quiet = TRUE, levels=c(0,1), direction="<")))
+      
+    } else {
+      set.seed(123)
+      cv_fit <- cv.glmnet(X_sub, y, family = "binomial", alpha = 0, 
+                          type.measure = "auc", nfolds = nfolds, keep = TRUE)
+      best_lambda_idx <- which(cv_fit$lambda == cv_fit$lambda.min)
+      cv_probs <- cv_fit$fit.preval[, best_lambda_idx]
+      perf_results$auc[i] <- as.numeric(auc(roc(y, cv_probs, quiet = TRUE, levels=c(0,1), direction="<")))
+    }
+  }
+  
+  # check the oprimal set of proteins
+  if(nrow(perf_results) > 1) {
+    best_n <- perf_results$n_proteins[which.max(perf_results$auc[-1]) + 1]
+  } else {
+    best_n <- 1 
+  }
+  
+  optimal_proteins <- ranked_proteins[1:best_n]
+  
+  # plot number of proteins versus performance
+  p <- ggplot(perf_results, aes(x = n_proteins, y = auc)) +
+    geom_line(color = "#ad5291", size = 1) +
+    geom_point(aes(color = (n_proteins == best_n)), size = 3) +
+    geom_vline(xintercept = best_n, linetype = "dashed", color = "gray50") +
+    scale_x_continuous(breaks = 1:length(ranked_proteins), labels = ranked_proteins) +
+    scale_color_manual(values = c("black", "red"), guide = "none") +
+    theme_classic(base_size = 12) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = "Selection of best protein signature based on model performance",
+         subtitle = paste0("Max AUC: ", round(max(perf_results$auc), 3), " at ", best_n, " proteins"),
+         x = "Proteins added based on feature importance", y = "AUC of LOOCV")
+  
+  ggsave(paste0(output_prefix, "protein_signature_", fluid, ".pdf"), p, width = 8, height = 6)
+  
+  return(list(
+    optimal_n = best_n,
+    optimal_proteins = optimal_proteins,
+    performance_table = perf_results
+  ))
+}
+
+# =============================
+# Get ALS risk score in PGMC
+# =============================
+run_ALS_signature_workflow <- function(
+    results_ALL,
+    proteins,
+    fluid = "SERUM",
+    model_type = c("lasso", "elastic_net"),
+    alpha = NULL,
+    output_prefix = "output",
+    make_plots = TRUE
+) {
+  
+  model_type <- match.arg(model_type)
+  
+  # define alpha
+  if (is.null(alpha)) {
+    alpha <- ifelse(model_type == "lasso", 1, 0.5)
+  }
+  alpha = 0
+  
+  message("Running model: ", model_type, " (alpha = ", alpha, ") on ", fluid)
+  
+  # prepare data
+  data_train <- results_ALL[[fluid]]$data_adjusted %>%
+    filter(type %in% c("ALS","CTR"), Target %in% proteins) %>%
+    select(SampleName, Target, NPQ_adj, type) %>%
+    pivot_wider(names_from = Target, values_from = NPQ_adj)
+  
+  data_model <- data_train %>%
+    select(-SampleName) %>%
+    rename(status = type) %>%
+    mutate(status = ifelse(status == "ALS", 1, 0))
+  
+  X <- as.matrix(data_model[, proteins])
+  y <- data_model$status
+  
+  # scale
+  X_scaled <- scale(X)
+  scaling_center <- attr(X_scaled, "scaled:center")
+  scaling_scale  <- attr(X_scaled, "scaled:scale")
+  
+  # model with protein signature
+  set.seed(123)
+  cv_model <- cv.glmnet(X_scaled, y, family = "binomial", alpha = alpha)
+  
+  coef_df <- as.data.frame(as.matrix(coef(cv_model, s = "lambda.min")))
+  coef_df$feature <- rownames(coef_df)
+  
+  # prediction
+  pred_train <- predict(cv_model,
+                        newx = X_scaled,
+                        s = "lambda.min",
+                        type = "link")
+  
+  ALS_CTR_results <- data_train %>%
+    mutate(ALS_risk_score = as.numeric(pred_train)) %>%
+    select(-type)
+  
+  # check prediction in PGMCs
+  data_pgmc <- results_ALL[[fluid]]$data_adjusted %>%
+    filter(type == "PGMC", Target %in% proteins) %>%
+    select(SampleName, Target, NPQ_adj) %>%
+    pivot_wider(names_from = Target, values_from = NPQ_adj)
+  
+  X_pgmc <- as.matrix(data_pgmc[, proteins])
+  X_pgmc_scaled <- scale(X_pgmc,
+                         center = scaling_center,
+                         scale = scaling_scale)
+  
+  pred_pgmc <- predict(cv_model,
+                       newx = X_pgmc_scaled,
+                       s = "lambda.min",
+                       type = "link")
+  
+  PGMC_results <- data_pgmc %>%
+    mutate(ALS_risk_score = as.numeric(pred_pgmc))
+  
+  # combine both
+  results_all <- bind_rows(PGMC_results, ALS_CTR_results)
+  
+  if (make_plots) {
+    
+    plot_data <- results_all %>%
+      left_join(samples_ID_type %>% rename(SampleName = `Sample ID`)) %>%
+      mutate(type = factor(type, levels = c("ALS","PGMC","CTR")),
+             label = ifelse(type == "PGMC" & ALS_risk_score > 0,
+                            ParticipantCode, NA))
+    
+    group_colors <- c("CTR"="#6F8EB2","ALS"="#B2936F","PGMC"="#ad5291")
+    
+    pdf(paste0(output_prefix, "ALS_risk_score_",fluid,".pdf"), height = 5, width = 7)
+    
+    print(
+      ggplot(plot_data, aes(x = ALS_risk_score, y = type, fill = type)) +
+        geom_violin(trim = FALSE, alpha = 0.4) +
+        geom_jitter(aes(color = type), height = 0.08, size = 1.2) +
+        ggrepel::geom_text_repel(
+          data = plot_data %>% filter(!is.na(label)),
+          aes(label = label),
+          size = 3,
+          segment.color = "black",
+          max.overlaps = 50,
+          direction = "y") +
+        geom_vline(xintercept = 0, linetype = "dashed") +
+        scale_fill_manual(values = group_colors) +
+        scale_color_manual(values = group_colors) +
+        theme_classic(base_size = 12) +
+        theme(
+          axis.line = element_line(size = 0.4),
+          axis.ticks = element_line(size = 0.3),
+          axis.text = element_text(color = "black"),
+          axis.title = element_text(size = 12),
+          plot.title = element_text(size = 13, face = "bold"),
+          legend.position = "none"
+        ) +
+        labs(
+          x = "ALS Risk Score",
+          y = NULL,
+          title = paste0("ALS risk score (", model_type, ", ", fluid, ")")))
+    
+    dev.off()
+  }
+  
+  return(list(
+    results = results_all,
+    model = cv_model,
+    coefficients = coef_df,
+    scaling = list(center = scaling_center, scale = scaling_scale)
+  ))
+}
+
+# =============================
+# Heatmap of protein signature
+# =============================
+run_heatmap_signature <- function(
+    results_ALL,
+    fluid,
+    proteins,
+    risk_scores_df,   
+    group_colors,
+    output_prefix = "heatmap",
+    highlight_ids = NULL
+) {
+  
+  message("Running heatmap for ", fluid)
+  
+  # heatmap data
+  data_heatmap <- results_ALL[[fluid]]$data_adjusted %>%
+    filter(type %in% c("PGMC","ALS","CTR"),
+           Target %in% proteins) %>%
+    left_join(ALSFRS_NULISA_V0 %>%
+                filter(type == "ALS") %>%
+                select(PatientID, ALSFRS_1),
+              by = "PatientID") %>%
+    left_join(site_onset %>%
+                filter(type == "ALS") %>%
+                select(ParticipantCode, SiteDiseaseOnset),
+              by = "ParticipantCode") %>%
+    left_join(disease_duration %>%
+                filter(type == "ALS", Visit == "V0") %>%
+                select(PatientID, `Disease duration`) %>%
+                distinct(),
+              by = "PatientID") %>%
+    distinct() %>%
+    select(Target, NPQ_adj, ParticipantCode, type, sex, age,
+           ALSFRS_1, SiteDiseaseOnset, `Disease duration`,SampleName) %>%
+    pivot_wider(names_from = Target, values_from = NPQ_adj) %>%
+    left_join(risk_scores_df %>%
+                select(SampleName, ALS_risk_score),
+              by = "SampleName")
+  
+  # heatmap matrix
+  mat <- data_heatmap %>%
+    select(-c(ParticipantCode, type, ALS_risk_score,
+              sex, age, ALSFRS_1,
+              SiteDiseaseOnset, `Disease duration`,SampleName)) %>%
+    as.matrix()
+  
+  rownames(mat) <- data_heatmap$ParticipantCode
+  
+  # scale rows (z-score per sample)
+  mat_scaled <- t(scale(t(mat)))
+  
+  # definition of colors
+  score_col <- colorRamp2(
+    c(min(data_heatmap$ALS_risk_score, na.rm = TRUE),
+      0,
+      max(data_heatmap$ALS_risk_score, na.rm = TRUE)),
+    c("lightgreen", "white", "darkred")
+  )
+  
+  disease_duration_col <- colorRamp2(
+    range(data_heatmap$`Disease duration`, na.rm = TRUE),
+    c("#eae115","#e69619")
+  )
+  
+  age_col <- colorRamp2(
+    range(data_heatmap$age, na.rm = TRUE),
+    c("lightgreen","darkgreen")
+  )
+  
+  ALSFRS_col <- colorRamp2(
+    c(0,22,48),
+    c("#0c1cf3", "#d1d1f0", "#f4f5f9")
+  )
+  
+  # row annotations
+  ha <- rowAnnotation(
+    Group = data_heatmap$type,
+    ALS_score = data_heatmap$ALS_risk_score,
+    IDs_interest = ifelse(data_heatmap$ParticipantCode %in% highlight_ids,
+                          "yes","no"),
+    Disease_onset = data_heatmap$SiteDiseaseOnset,
+    Disease_duration = data_heatmap$`Disease duration`,
+    ALSFRS_R = data_heatmap$ALSFRS_1,
+    Age = data_heatmap$age,
+    Sex = data_heatmap$sex,
+    na_col = "white",
+    col = list(
+      Group = group_colors,
+      ALS_score = score_col,
+      Disease_onset = c("spinal"="#3498db",
+                        "bulbar"="#e74c3c",
+                        "other"="grey"),
+      Disease_duration = disease_duration_col,
+      ALSFRS_R = ALSFRS_col,
+      Age = age_col,
+      Sex = c("M"="#4c72b0","F"="#dd8452"),
+      IDs_interest = c("yes"="black","no"="white")
+    )
+  )
+  
+  # clustered
+  pdf(paste0(output_prefix, "_clustered.pdf"), height = 14)
+  print(
+    Heatmap(
+      mat_scaled,
+      name = "Z-score",
+      left_annotation = ha,
+      cluster_rows = TRUE,
+      cluster_columns = TRUE,
+      show_row_names = TRUE,
+      show_column_names = TRUE,
+      col = colorRamp2(c(-2,0,2), c("blue","white","red"))
+    )
+  )
+  dev.off()
+  
+  # grouped
+  pdf(paste0(output_prefix, "_grouped.pdf"), height = 14)
+  print(
+    Heatmap(
+      mat_scaled,
+      name = "Z-score",
+      left_annotation = ha,
+      row_split = data_heatmap$type,
+      cluster_rows = TRUE,
+      cluster_columns = TRUE,
+      show_row_names = TRUE,
+      show_column_names = TRUE,
+      col = colorRamp2(c(-2,0,2), c("blue","white","red"))
+    )
+  )
+  dev.off()
+  
+  return(data_heatmap)
+}
+
 
 # ------------------------------------------------------------------------------
 # ====================================================
@@ -731,136 +1092,64 @@ for (tissue in tissues) {
   write_xlsx(lm_weights_ALS_PGMC_enet, path = paste0("results/weights_lm_enet_",tissue,"_ALS_PGMC.xlsx"))
 }
 
+
+# =============================================================
+# Find the most optimal set of proteins for each ML and fluid
+
+## -> Lasso + Serum
+proteins_serum_ALS_CTR = c("NEFL","GDNF","pTau-181","TAFA5","VEGFD","NGF","BASP1","IL6","SOD1")
+lasso_optimal_protein_signature_serum = find_optimal_signature(results_ALL = results_ALL,
+                                                         ranked_proteins = proteins_serum_ALS_CTR,
+                                                         fluid = "SERUM",
+                                                         output_prefix = "plots/ML/Lasso/performance_")
+
+# Elastic Net + Serum
+proteins_serum_ALS_CTR = c("NEFL","GDNF","pTau-181","NEFH","VEGFD","TAFA5",
+                           "pTau-231","NGF","FABP3","CALB2")
+enet_optimal_protein_signature_serum = find_optimal_signature(results_ALL = results_ALL,
+                                                               ranked_proteins = proteins_serum_ALS_CTR,
+                                                               fluid = "SERUM",
+                                                               output_prefix = "plots/ML/Elastic Net/performance_")
+
+# Elastic Net + Plasma
+proteins_plasma_ALS_CTR = c("NEFL","NEFH","pTau-181","GDNF","FABP3","IL16","TEK")
+enet_optimal_protein_signature_plasma = find_optimal_signature(results_ALL = results_ALL,
+                                                              ranked_proteins = proteins_plasma_ALS_CTR,
+                                                              fluid = "PLASMA",
+                                                              output_prefix = "plots/ML/Elastic Net/performance_")
+
+
+# Elastic Net + CSF
+proteins_CSF_ALS_CTR =  c("NEFL","NEFH","CHIT1","IL6","MSLN","TNF","CHI3L1",
+                          "IL12p70","UCHL1","CCL2","CCL3")
+
+enet_optimal_protein_signature_CSF = find_optimal_signature(results_ALL = results_ALL,
+                                                               ranked_proteins = proteins_CSF_ALS_CTR,
+                                                               fluid = "CSF",
+                                                               output_prefix = "plots/ML/Elastic Net/performance_")
+
+
 # ====================================================
 # Compute an ALS risk score based on ALS vs CTR model 
+## -> Lasso + Serum
+proteins_serum_ALS_CTR = lasso_optimal_protein_signature_serum$optimal_proteins
 
-### -> for Lasso results based on serum ALS vs CTR model
-proteins_serum_ALS_CTR = c("NEFL","GDNF","pTau-181","TAFA5","VEGFD")
-
-# get data of ALS vs CTR
-protein_data_ALSvsCTR_serum = results_ALL[["SERUM"]]$data_adjusted %>%
-  filter(type %in% c("ALS","CTR")) %>%
-  filter(Target %in% proteins_serum_ALS_CTR) %>%
-  select(SampleName,Target,NPQ_adj,type) %>%
-  pivot_wider(names_from = Target,
-              values_from = NPQ_adj)
-protein_data_ALSvsCTR_serum_new = protein_data_ALSvsCTR_serum %>%
-  select(-SampleName) %>%
-  rename(status = type) %>%
-  mutate(status = ifelse(status == "ALS",1,0))
-
-# prediction of ALS vs CTR using protein signature
-y_pred = protein_data_ALSvsCTR_serum_new$status 
-X_serum = as.matrix(protein_data_ALSvsCTR_serum_new[,proteins_serum_ALS_CTR])
-
-# scaling
-X_scaled <- scale(X_serum)
-scaling_center <- attr(X_scaled, "scaled:center")
-scaling_scale  <- attr(X_scaled, "scaled:scale")
-
-# model 
-set.seed(123)
-cv_model <- cv.glmnet(X_scaled, y_pred,family = "binomial",alpha = 1)
-final_model <- cv_model$glmnet.fit
-lambda_opt <- cv_model$lambda.min
-
-# model coeficients
-coef_vec <- coef(cv_model, s = "lambda.min")
-coef_df <- as.data.frame(as.matrix(coef_vec))
-coef_df$feature <- rownames(coef_df)
-print(coef_df)
-
-# get PGMC only data
-protein_data_PGMC_serum = results_ALL[["SERUM"]]$data_adjusted %>%
-  filter(type == "PGMC") %>%
-  filter(Target %in% proteins_serum_ALS_CTR) %>%
-  select(Target,NPQ_adj,SampleName) %>%
-  pivot_wider(names_from = Target,
-              values_from = NPQ_adj) 
-
-PGMC_samples = protein_data_PGMC_serum$SampleName
-X_PGMC = protein_data_PGMC_serum %>%
-  select(all_of(proteins_serum_ALS_CTR))
-
-# same scaling as before on the protein data
-X_PGMC = as.matrix(X_PGMC)
-X_PGMC_scaled = scale(X_PGMC,center = scaling_center,scale = scaling_scale)
-
-# Risk scores of PGMC patients
-ALS_risk_score_PGMC = predict(cv_model,
-                              newx = X_PGMC_scaled,
-                              s = "lambda.min",
-                              type = "link") 
-
-PGMC_results = protein_data_PGMC_serum %>%
-  mutate(ALS_risk_score = as.numeric(ALS_risk_score_PGMC)) 
-
-# Risk scores of ALS and CTR 
-ALS_risk_scores_ALS_CTR = predict(cv_model,
-                                  newx = X_scaled,
-                                  s = "lambda.min",
-                                  type = "link") 
-
-ALS_CTR_results = protein_data_ALSvsCTR_serum %>%
-  mutate(ALS_risk_score = as.numeric(ALS_risk_scores_ALS_CTR)) %>%
-  select(-type)
-
-# Risk scores of all and visualisation
-ALS_risk_scores_all = rbind(PGMC_results,
-                            ALS_CTR_results) %>%
-  left_join(samples_ID_type %>% rename(SampleName = `Sample ID`))
-
-plot_data_risk_scores = ALS_risk_scores_all %>%
-  mutate(label = ifelse(type == "PGMC" & ALS_risk_score > 0,ParticipantCode,NA))
-plot_data_risk_scores$type <- factor(plot_data_risk_scores$type, 
-                                     levels = c("ALS", "PGMC", "CTR"))
-group_colors <- c(
-  "CTR"  = "#6F8EB2",
-  "ALS"  = "#B2936F",
-  "PGMC" = "#ad5291")
-
-pdf("plots/ML/Lasso/ALS_risk_score_serum.pdf",height = 5,width=7)
-ggplot(plot_data_risk_scores, aes(x = ALS_risk_score, y = type, fill = type)) +
-  geom_violin(trim = FALSE, alpha = 0.4) +
-  #geom_boxplot(width = 0.15, outlier.shape = NA, size = 0.3) +
-  geom_jitter(aes(color = type),width = 0,height = 0.08,size = 1.2,alpha = 0.8) +
-  geom_text_repel(data = plot_data_risk_scores %>% filter(!is.na(label)),
-    aes(label = label),
-    size = 3,segment.color = "black",
-    segment.size = 0.4,
-    segment.alpha = 0.6,
-    segment.curvature = 0.2,
-    segment.angle = 20,
-    box.padding = 0.7,
-    point.padding = 0.4,
-    max.overlaps = 50, direction = "y") +
-  scale_fill_manual(values = group_colors) +
-  scale_color_manual(values = group_colors) +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "black",size = 0.4) +
-  theme_classic(base_size = 12) +
-  theme(
-    axis.line = element_line(size = 0.4),
-    axis.ticks = element_line(size = 0.3),
-    axis.text = element_text(color = "black"),
-    axis.title = element_text(size = 12),
-    plot.title = element_text(size = 13, face = "bold"),
-    legend.position = "none"
-  ) +
-  labs(x = "ALS Risk Score",y = NULL,
-    title = "ALS risk score based on 5-protein signature in Serum")
-dev.off()
-
+lasso_PGMC_serum_signature = run_ALS_signature_workflow(results_ALL,
+                                                        proteins_serum_ALS_CTR,
+                                                        fluid = "SERUM",
+                                                        model_type = "lasso",
+                                                        output_prefix = "plots/ML/Lasso/")
 
 # ================================================================================
-# Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 5-protein signature
+# Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 6-protein signature
 protein_data_PCA_serum = protein_data_clean %>%
-  filter(Target %in% proteins_serum_ALS_CTR) %>%
+  filter(Target %in% lasso_optimal_protein_signature_serum$optimal_proteins) %>%
   filter(type %in% c("PGMC","ALS","CTR"))
 
 pca_results_serum_adj <- run_pca_adjusted(remove_effect_covariates(protein_data_PCA_serum,keep = "type"), 
                                           "SERUM")
 
-plots_subtype_adj <- plot_pca(pca_results_serum_adj,"SERUM based on 5-protein signature")
+plots_subtype_adj <- plot_pca(pca_results_serum_adj,"SERUM based on 6-protein signature")
 
 pdf("plots/ML/Lasso/PCA_SERUM_protein_signature.pdf", width = 8, height = 6.5) 
 plots_subtype_adj
@@ -869,7 +1158,7 @@ dev.off()
 pca_results_serum_adj$scores <- pca_results_serum_adj$scores %>%
   mutate(ParticipantCode = ifelse(type == "PGMC",ParticipantCode,NA))
 
-plots_subtype_adj_label <- plot_pca(pca_results_serum_adj,"SERUM based on 5-protein signature",
+plots_subtype_adj_label <- plot_pca(pca_results_serum_adj,"SERUM based on 6-protein signature",
                                                        label = TRUE)
 
 pdf("plots/ML/Lasso/PCA_SERUM_protein_signature_label.pdf", width = 8, height = 6.5) 
@@ -880,62 +1169,156 @@ dev.off()
 # ================================================================================
 # Unsupervised visualisation (heatmap) of PGMC, ALS, CTR based on 5-protein signature
 
-# data for heatmap
-data_heatmap_serum_groups = results_ALL[["SERUM"]]$data_adjusted %>%
-  filter(type %in% c("PGMC","ALS","CTR")) %>%
-  filter(Target %in% proteins_serum_ALS_CTR) %>%
-  select(Target,NPQ_adj,ParticipantCode,type) %>%
-  pivot_wider(names_from = Target,
-              values_from = NPQ_adj) %>%
-  left_join(plot_data_risk_scores %>% select(ALS_risk_score,ParticipantCode))
+group_colors <- c(
+  "CTR"  = "#6F8EB2",
+  "ALS"  = "#B2936F",
+  "PGMC" = "#ad5291")
 
-heatmap_matrix_serum_groups = data_heatmap_serum_groups %>%
-  select(-c(ParticipantCode,type,ALS_risk_score)) %>%
-  as.matrix()
+run_heatmap_signature(results_ALL,
+                      "SERUM",
+                      lasso_optimal_protein_signature_serum$optimal_proteins,
+                      lasso_PGMC_serum_signature$results,
+                      group_colors = group_colors,
+                      output_prefix = "plots/ML/Lasso/heatmap_SERUM",
+                      highlight_ids = c("DE101","TR120","TR112"))
 
-rownames(heatmap_matrix_serum_groups) = data_heatmap_serum_groups$ParticipantCode
+##### ----
+# Elastic Net
 
-# scale data
-heatmap_matrix_serum_groups_scaled = t(scale(t(heatmap_matrix_serum_groups)))
+## -> Elastic Net + Serum
+EN_PGMC_serum_signature = run_ALS_signature_workflow(results_ALL,
+                                                     enet_optimal_protein_signature_serum$optimal_proteins,
+                                                        fluid = "SERUM",
+                                                        model_type = "elastic_net",
+                                                        output_prefix = "plots/ML/Elastic Net/")
 
-# ALS score info
-score_column_colors = colorRamp2(c(min(data_heatmap_serum_groups$ALS_risk_score),0,
-                            max(data_heatmap_serum_groups$ALS_risk_score)),
-                            c("lightgrey", "red","darkred"))
 
-# annotation for participants
-ha = rowAnnotation(Group = data_heatmap_serum_groups$type,
-                   ALS_score = data_heatmap_serum_groups$ALS_risk_score,
-                   IDs_interest = ifelse(data_heatmap_serum_groups$ParticipantCode %in% c("DE101", "TR120", "TR114"),"yes","no"),
-                   col = list(Group = group_colors,
-                              ALS_score = score_column_colors,
-                              IDs_interest = c("yes" = "black","no" = "white")))
+# ================================================================================
+# Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 9-protein signature
+protein_data_PCA_serum = protein_data_clean %>%
+  filter(Target %in% enet_optimal_protein_signature_serum$optimal_proteins) %>%
+  filter(type %in% c("PGMC","ALS","CTR"))
 
-# plot heatmap
-pdf("plots/ML/Lasso/heatmap_protein_signature_clustered.pdf",height = 14)
-Heatmap(
-  heatmap_matrix_serum_groups_scaled,
-  name = "Z-score",
-  left_annotation  = ha,
-  #row_split = data_heatmap_serum_groups$type,
-  show_row_names = TRUE,
-  show_column_names = TRUE,
-  cluster_rows = TRUE,
-  cluster_columns = TRUE,
-  col = colorRamp2(c(-2, 0, 2), c("#28d778", "white", "purple")))
+pca_results_serum_adj <- run_pca_adjusted(remove_effect_covariates(protein_data_PCA_serum,keep = "type"), 
+                                          "SERUM")
+
+plots_subtype_adj <- plot_pca(pca_results_serum_adj,"SERUM based on 9-protein signature")
+
+pdf("plots/ML/Elastic Net/PCA_SERUM_protein_signature.pdf", width = 8, height = 6.5) 
+plots_subtype_adj
 dev.off()
 
-pdf("plots/ML/Lasso/heatmap_protein_signature_group_organized.pdf",height = 14)
-Heatmap(
-  heatmap_matrix_serum_groups_scaled,
-  name = "Z-score",
-  left_annotation  = ha,
-  row_split = data_heatmap_serum_groups$type,
-  show_row_names = TRUE,
-  show_column_names = TRUE,
-  cluster_rows = TRUE,
-  cluster_columns = TRUE,
-  col = colorRamp2(c(-2, 0, 2), c("#28d778", "white", "purple")))
+pca_results_serum_adj$scores <- pca_results_serum_adj$scores %>%
+  mutate(ParticipantCode = ifelse(type == "PGMC",ParticipantCode,NA))
+
+plots_subtype_adj_label <- plot_pca(pca_results_serum_adj,"SERUM based on 9-protein signature",
+                                    label = TRUE)
+
+pdf("plots/ML/Elastic Net/PCA_SERUM_protein_signature_label.pdf", width = 8, height = 6.5) 
+plots_subtype_adj_label
 dev.off()
+
+
+# ================================================================================
+# Unsupervised visualisation (heatmap) of PGMC, ALS, CTR based on 9-protein signature
+
+run_heatmap_signature(results_ALL,
+                      "SERUM",
+                      enet_optimal_protein_signature_serum$optimal_proteins,
+                      EN_PGMC_serum_signature$results,
+                      group_colors = group_colors,
+                      output_prefix = "plots/ML/Elastic Net/heatmap_SERUM",
+                      highlight_ids = c("DE101","TR120","TR114","TR112"))
+
+## -> Elastic Net + Plasma
+EN_PGMC_plasma_signature = run_ALS_signature_workflow(results_ALL,
+                                                     enet_optimal_protein_signature_plasma$optimal_proteins,
+                                                     fluid = "PLASMA",
+                                                     model_type = "elastic_net",
+                                                     output_prefix = "plots/ML/Elastic Net/")
+
+
+# ================================================================================
+# Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 3-protein signature
+protein_data_PCA_PLASMA = protein_data_clean %>%
+  filter(Target %in% enet_optimal_protein_signature_plasma$optimal_proteins) %>%
+  filter(type %in% c("PGMC","ALS","CTR"))
+
+pca_results_PLASMA_adj <- run_pca_adjusted(remove_effect_covariates(protein_data_PCA_PLASMA,keep = "type"), 
+                                          "PLASMA")
+
+plots_subtype_adj <- plot_pca(pca_results_PLASMA_adj,"PLASMA based on 3-protein signature")
+
+pdf("plots/ML/Elastic Net/PCA_PLASMA_protein_signature.pdf", width = 8, height = 6.5) 
+plots_subtype_adj
+dev.off()
+
+pca_results_PLASMA_adj$scores <- pca_results_PLASMA_adj$scores %>%
+  mutate(ParticipantCode = ifelse(type == "PGMC",ParticipantCode,NA))
+
+plots_subtype_adj_label <- plot_pca(pca_results_PLASMA_adj,"PLASMA based on 3-protein signature",
+                                    label = TRUE)
+
+pdf("plots/ML/Elastic Net/PCA_PLASMA_protein_signature_label.pdf", width = 8, height = 6.5) 
+plots_subtype_adj_label
+dev.off()
+
+
+# ================================================================================
+# Unsupervised visualisation (heatmap) of PGMC, ALS, CTR based on 3-protein signature
+
+run_heatmap_signature(results_ALL,
+                      "PLASMA",
+                      enet_optimal_protein_signature_plasma$optimal_proteins,
+                      EN_PGMC_plasma_signature$results,
+                      group_colors = group_colors,
+                      output_prefix = "plots/ML/Elastic Net/heatmap_PLASMA",
+                      highlight_ids = c("DE101","TR120","DE102","TR113","TR128"))
+
+## -> Elastic Net + CSF
+EN_PGMC_CSF_signature = run_ALS_signature_workflow(results_ALL,
+                                                      enet_optimal_protein_signature_CSF$optimal_proteins,
+                                                      fluid = "CSF",
+                                                      model_type = "elastic_net",
+                                                      output_prefix = "plots/ML/Elastic Net/")
+
+
+# ================================================================================
+# Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 2-protein signature
+protein_data_PCA_CSF = protein_data_clean %>%
+  filter(Target %in% enet_optimal_protein_signature_CSF$optimal_proteins) %>%
+  filter(type %in% c("PGMC","ALS","CTR"))
+
+pca_results_CSF_adj <- run_pca_adjusted(remove_effect_covariates(protein_data_PCA_CSF,keep = "type"), 
+                                           "CSF")
+
+plots_subtype_adj <- plot_pca(pca_results_CSF_adj,"CSF based on 2-protein signature")
+
+pdf("plots/ML/Elastic Net/PCA_CSF_protein_signature.pdf", width = 8, height = 6.5) 
+plots_subtype_adj
+dev.off()
+
+pca_results_CSF_adj$scores <- pca_results_CSF_adj$scores %>%
+  mutate(ParticipantCode = ifelse(type == "PGMC",ParticipantCode,NA))
+
+plots_subtype_adj_label <- plot_pca(pca_results_CSF_adj,"CSF based on 2-protein signature",
+                                    label = TRUE)
+
+pdf("plots/ML/Elastic Net/PCA_CSF_protein_signature_label.pdf", width = 8, height = 6.5) 
+plots_subtype_adj_label
+dev.off()
+
+
+# ================================================================================
+# Unsupervised visualisation (heatmap) of PGMC, ALS, CTR based on 9-protein signature
+
+run_heatmap_signature(results_ALL,
+                      "CSF",
+                      enet_optimal_protein_signature_CSF$optimal_proteins,
+                      EN_PGMC_CSF_signature$results,
+                      group_colors = group_colors,
+                      output_prefix = "plots/ML/Elastic Net/heatmap_CSF",
+                      highlight_ids = c("DE101"))
+
 
 
