@@ -982,7 +982,7 @@ for (tissue in tissues) {
 compute_signed <- function(df, logfc_col, comp_name, up, down, alpha_threshold = 0.1, use_fdr = TRUE){
   
   # Explicitly choose padj or pvalue
-  sig_col <- if(use_fdr) paste0("padj_", comp_name) else paste0("pvalue_", comp_name)
+  sig_col <- if(use_fdr) paste0("pvalue_", comp_name) else paste0("pvalue_", comp_name)
   
   #if(!sig_col %in% colnames(df)) sig_col <- paste0("pvalue_", comp_name)
   
