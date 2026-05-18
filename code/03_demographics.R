@@ -9,10 +9,10 @@ date_ALS <- Sex_age_all_participants %>%
   select(Pseudonyme,age) %>%
   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "ALS",]$PatientID %>%unique()))) %>%
   mutate(patient_group = rep("ALS"))
-date_mimic <- Sex_age_all_participants %>%
-  select(Pseudonyme,age) %>%
-  filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "mimic",]$PatientID %>%unique()))) %>%
-  mutate(patient_group = rep("mimic"))
+# date_mimic <- Sex_age_all_participants %>%
+#   select(Pseudonyme,age) %>%
+#   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "mimic",]$PatientID %>%unique()))) %>%
+#   mutate(patient_group = rep("mimic"))
 date_PGMC <- Sex_age_all_participants %>%
   select(Pseudonyme,age) %>%
   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "PGMC",]$PatientID %>%unique())))  %>%
@@ -20,10 +20,12 @@ date_PGMC <- Sex_age_all_participants %>%
 
 skim(date_CTR)
 skim(date_ALS)
-skim(date_mimic)
+#skim(date_mimic)
 skim(date_PGMC)
 
-date_all <- do.call("rbind",list(date_CTR,date_ALS,date_mimic,date_PGMC))
+date_all <- do.call("rbind",list(date_CTR,date_ALS,
+                                 #date_mimic,
+                                 date_PGMC))
 
 # -> Kruskal Wallis test between samples
 kruskal_test(data = date_all,age~patient_group)
@@ -38,23 +40,23 @@ Sex_ALS <- Sex_age_all_participants %>%
   select(Pseudonyme,sex) %>%
   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "ALS",]$PatientID %>%unique()))) %>%
   mutate(patient_group = rep("ALS"))
-Sex_mimic <- Sex_age_all_participants %>%
-  select(Pseudonyme,sex) %>%
-  filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "mimic",]$PatientID %>%unique()))) %>%
-  mutate(patient_group = rep("mimic"))
+# Sex_mimic <- Sex_age_all_participants %>%
+#   select(Pseudonyme,sex) %>%
+#   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "mimic",]$PatientID %>%unique()))) %>%
+#   mutate(patient_group = rep("mimic"))
 Sex_PGMC <- Sex_age_all_participants %>%
   select(Pseudonyme,sex) %>%
   filter(Pseudonyme %in% na.omit((samples_ID_type[samples_ID_type$type == "PGMC",]$PatientID %>%unique())))  %>%
   mutate(patient_group = rep("PGMC"))
-  
+
 skim(Sex_ALS)
 skim(Sex_CTR)
-skim(Sex_mimic)
+#skim(Sex_mimic)
 skim(Sex_PGMC)
 
 Sex_all <- do.call("rbind",list(Sex_ALS,
                                 Sex_CTR,
-                                Sex_mimic,
+                                #Sex_mimic,
                                 Sex_PGMC))
 Sex_all <- Sex_all %>% filter(!is.na(sex))
 table(Sex_all$patient_group,Sex_all$sex)
@@ -75,7 +77,9 @@ clinical_table <- GeneralDocumentation %>%
   select(PatientID,ParticipantCode,ALSuncertainty,ALSFUdiagnosis,Comment,PGMC,
          DatePhenoconversion,contains("Mutation"),contains("LFU")) %>%
   left_join(Sex_age_all_participants %>% rename(PatientID = Pseudonyme)) %>%
-  left_join(do.call("rbind", list(ALS_ID, CTR_ID, PGMC_ID,mimic_ID)))  %>% 
+  left_join(do.call("rbind", list(ALS_ID, CTR_ID,
+                                  #mimic_ID
+                                  PGMC_ID)))  %>% 
   left_join(Questionnaire %>% select(PatientID,Erfassungsdatum,contains("Gs")) %>%
               filter(!if_all(starts_with("Gs"),is.na)))
 # -> reorganize mutations and reorganize order
@@ -87,7 +91,7 @@ clinical_table_extended <- clinical_table %>%
   distinct() %>%
   group_by(PatientID, ParticipantCode) %>%
   mutate(has_mut = any(MutationType == 1)) %>%
- # ungroup() %>%
+  # ungroup() %>%
   mutate(
     Gene = ifelse(!has_mut, NA, Gene),
     MutationType = ifelse(!has_mut, NA, MutationType),
@@ -136,7 +140,7 @@ clinical_table_slim <- clinical_table_slim %>%
   select(PatientID,ParticipantCode,type,Comment,age,sex,MutationType,PreciseMutation,
          Erfassungsdatum,ALSFRS,DatePhenoconversion,contains("LFU")) %>%
   group_by(PatientID, ParticipantCode, type, age, sex,MutationType, PreciseMutation) %>% 
- # arrange(Erfassungsdatum, .by_group = TRUE) %>%  # make sure order is consistent
+  # arrange(Erfassungsdatum, .by_group = TRUE) %>%  # make sure order is consistent
   mutate(obs = row_number()) %>%
   pivot_wider(
     names_from = obs,
@@ -175,7 +179,7 @@ dunn_test(data = ALSFRS_NULISA_V0,ALSFRS_1~type)
 skim(ALSFRS_NULISA_V0 %>% filter(type == "CTR") %>% pull(ALSFRS_1))
 skim(ALSFRS_NULISA_V0 %>% filter(type == "PGMC") %>% pull(ALSFRS_1))
 skim(ALSFRS_NULISA_V0 %>% filter(type == "ALS") %>% pull(ALSFRS_1))
-skim(ALSFRS_NULISA_V0 %>% filter(type == "mimic") %>% pull(ALSFRS_1))
+#skim(ALSFRS_NULISA_V0 %>% filter(type == "mimic") %>% pull(ALSFRS_1))
 
 ## stats for disease duration
 disease_duration_NULISA = disease_duration %>%
@@ -184,7 +188,7 @@ disease_duration_NULISA = disease_duration %>%
 
 # stats per group
 skim(disease_duration_NULISA %>% filter(type == "ALS") %>% pull(`Disease duration`))
-skim(disease_duration_NULISA %>% filter(type == "mimic") %>% pull(`Disease duration`))
+#skim(disease_duration_NULISA %>% filter(type == "mimic") %>% pull(`Disease duration`))
 
 # site of onset
 site_onset_NULISA = site_onset %>%
@@ -213,6 +217,3 @@ ECAS_table = clinical_table_slim %>%
   select(-contains("Erfassungsdatum"))
 
 writexl::write_xlsx(ECAS_table,"results/ECAS_overview.xlsx")
-
-
-

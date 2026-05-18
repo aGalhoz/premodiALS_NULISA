@@ -504,7 +504,8 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15,adjus
   df_top <- df_top %>%
     mutate(type = case_when(
       type %in% pgmc_mutation_proteins ~ factor(type, levels = c("CTR", "C9orf72", "SOD1", "TARDBP","others")),
-      TRUE ~ factor(type, levels = c("CTR", "PGMC", "ALS", "mimic"))
+      #TRUE ~ factor(type, levels = c("CTR", "PGMC", "ALS", "mimic"))
+      TRUE ~ factor(type, levels = c("CTR", "PGMC", "ALS"))
     ))
   
   # Build plot

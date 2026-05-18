@@ -446,17 +446,17 @@ feature_importance = function(ml_object,
     message("Plot saved to ", plot_path)
   }
   
-  return(weight)
+  return(plot_df)
 }
 
-# ================================================
-# Check the best protein signature based on LOOCV
-# ================================================
-find_optimal_signature <- function(results_ALL, 
-                                   ranked_proteins, 
-                                   fluid = "SERUM", 
-                                   output_prefix = "optimization_",
-                                   nfolds = NULL) {
+# ====================================================
+# Check the best protein signature based on nested CV
+# ====================================================
+find_optimal_signature_old <- function(results_ALL, 
+                                       ranked_proteins, 
+                                       fluid = "SERUM", 
+                                       output_prefix = "optimization_",
+                                       nfolds = NULL) {
   
   # data prep
   data_train <- results_ALL[[fluid]]$data_adjusted %>%
@@ -538,6 +538,147 @@ find_optimal_signature <- function(results_ALL,
     optimal_n = best_n,
     optimal_proteins = optimal_proteins,
     performance_table = perf_results
+  ))
+}
+
+find_optimal_signature <- function(results_ALL, 
+                                   ranked_proteins, 
+                                   fluid = "SERUM",
+                                   output_prefix = "optimization_",
+                                   inner_folds = 5,
+                                   seed = 123) {
+  
+  set.seed(seed)
+  
+  min_proteins = 2
+  
+  # data preparation
+  data_all <- results_ALL[[fluid]]$data_adjusted %>%
+    filter(type %in% c("ALS", "CTR"), Target %in% ranked_proteins) %>%
+    select(SampleName, Target, NPQ_adj, type) %>%
+    pivot_wider(names_from = Target, values_from = NPQ_adj)
+  
+  X <- as.matrix(data_all[, ranked_proteins])
+  y <- ifelse(data_all$type == "ALS", 1, 0)
+  
+  X <- scale(X)
+  y_factor <- as.factor(y)
+  
+  # performance curve
+  auc_list <- vector("list", length(ranked_proteins))
+  folds_inner_full <- createFolds(y_factor, k = inner_folds)
+  
+  for (k in 1:length(ranked_proteins)) {
+    
+    vars <- ranked_proteins[1:k]
+    auc_inner <- c()
+    
+    for (j in seq_along(folds_inner_full)) {
+      
+      val_idx <- folds_inner_full[[j]]
+      tr_idx <- setdiff(seq_along(y), val_idx)
+      
+      X_tr <- X[tr_idx, vars, drop = FALSE]
+      y_tr <- y[tr_idx]
+      
+      X_val <- X[val_idx, vars, drop = FALSE]
+      y_val <- y[val_idx]
+      
+      if (length(unique(y_tr)) < 2 || length(unique(y_val)) < 2) next
+      
+      if (k == 1) {
+        df_tr <- data.frame(y = y_tr, x = X_tr[, 1])
+        df_val <- data.frame(x = X_val[, 1])
+        fit <- glm(y ~ x, data = df_tr, family = "binomial")
+        probs <- predict(fit, newdata = df_val, type = "response")
+      } else {
+        fit <- cv.glmnet(X_tr, y_tr,
+                         family = "binomial",
+                         alpha = 0,
+                         nfolds = inner_folds)
+        probs <- predict(fit, newx = X_val, s = "lambda.min", type = "response")
+      }
+      
+      auc_inner <- c(auc_inner,
+                     as.numeric(auc(roc(y_val, probs, quiet = TRUE,
+                                        levels=c(0,1), direction="<"))))
+    }
+    
+    auc_list[[k]] <- auc_inner
+  }
+  
+  perf_results <- data.frame(
+    n_proteins = 1:length(ranked_proteins),
+    protein_added = ranked_proteins,
+    auc_mean = sapply(auc_list, function(x) mean(x, na.rm = TRUE)),
+    auc_sd   = sapply(auc_list, function(x) sd(x, na.rm = TRUE))
+  )
+  
+  # selection of best number of proteins
+  valid_idx <- min_proteins:length(ranked_proteins)
+  
+  best_idx <- which.max(perf_results$auc_mean[valid_idx])
+  best_idx <- valid_idx[best_idx]
+  best_auc <- perf_results$auc_mean[best_idx]
+  best_sd  <- perf_results$auc_sd[best_idx]
+  threshold <- best_auc - (best_sd/sqrt(inner_folds))
+  candidate_k <- valid_idx[perf_results$auc_mean[valid_idx] >= threshold]
+  
+  best_n <- min(candidate_k) 
+  optimal_proteins <- ranked_proteins[1:best_n]
+  selected_auc <- perf_results$auc_mean[best_n]
+  
+  message("Selected signature size: ", best_n)
+  
+  # plot
+  selected_auc <- perf_results$auc_mean[perf_results$n_proteins == best_n]
+  
+  p <- ggplot(perf_results, aes(x = n_proteins, y = auc_mean)) +
+    
+    # SD error bars
+    geom_errorbar(aes(ymin = auc_mean - auc_sd/sqrt(inner_folds),
+                      ymax = auc_mean + auc_sd/sqrt(inner_folds)),
+                  width = 0.2,
+                  color = "grey50") +
+    
+    # mean line
+    geom_line(color = "#ad5291", size = 1) +
+    
+    # selected (robust) signature
+    geom_point(aes(color = (n_proteins == best_n)), size = 3) +
+    geom_vline(xintercept = best_n, linetype = "dashed", color = "gray50") +
+    
+    # best AUC point
+    #geom_point(data = perf_results[best_idx, ],
+    #          aes(x = n_proteins, y = auc_mean),
+    #               color = "blue", size = 3) +
+    
+    scale_x_continuous(breaks = 1:length(ranked_proteins),
+                       labels = ranked_proteins) +
+    
+    scale_color_manual(values = c("black", "red"), guide = "none") +
+    
+    theme_classic(base_size = 12) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    
+    labs(
+      title = "Selection of best protein signature based on performance",
+      subtitle = paste0(
+        "Selected signature (red): ", best_n, " proteins with ",
+        "AUC = ", round(selected_auc, 3), " (± ", 
+        round(perf_results$auc_sd[best_n]/sqrt(inner_folds), 3), ")."),
+      x = "Proteins added based on feature importance",
+      y = "Cross-validated AUC (mean ± SE)"
+    )
+  
+  ggsave(paste0(output_prefix, "protein_signature_", fluid, ".pdf"),
+         p, width = 8, height = 6)
+  
+  return(list(
+    optimal_n = best_n,
+    optimal_proteins = optimal_proteins,
+    performance_table = perf_results,
+    plot = p
   ))
 }
 
@@ -705,9 +846,10 @@ run_heatmap_signature <- function(
                 select(PatientID, `Disease duration`) %>%
                 distinct(),
               by = "PatientID") %>%
+    left_join(clinical_table_extended %>% select(ParticipantCode,MutationType)) %>%
     distinct() %>%
     select(Target, NPQ_adj, ParticipantCode, type, sex, age,
-           ALSFRS_1, SiteDiseaseOnset, `Disease duration`,SampleName) %>%
+           ALSFRS_1, SiteDiseaseOnset, `Disease duration`,SampleName,MutationType) %>%
     pivot_wider(names_from = Target, values_from = NPQ_adj) %>%
     left_join(risk_scores_df %>%
                 select(SampleName, ALS_risk_score),
@@ -717,7 +859,7 @@ run_heatmap_signature <- function(
   mat <- data_heatmap %>%
     select(-c(ParticipantCode, type, ALS_risk_score,
               sex, age, ALSFRS_1,
-              SiteDiseaseOnset, `Disease duration`,SampleName)) %>%
+              SiteDiseaseOnset, `Disease duration`,SampleName,MutationType)) %>%
     as.matrix()
   
   rownames(mat) <- data_heatmap$ParticipantCode
@@ -756,6 +898,7 @@ run_heatmap_signature <- function(
                           "yes","no"),
     Disease_onset = data_heatmap$SiteDiseaseOnset,
     Disease_duration = data_heatmap$`Disease duration`,
+    Mutation = data_heatmap$MutationType,
     ALSFRS_R = data_heatmap$ALSFRS_1,
     Age = data_heatmap$age,
     Sex = data_heatmap$sex,
@@ -766,6 +909,14 @@ run_heatmap_signature <- function(
       Disease_onset = c("spinal"="#3498db",
                         "bulbar"="#e74c3c",
                         "other"="grey"),
+      Mutation = c("C9orf72" = "#66c2a5",
+                   "SOD1" = "#fc8d62",
+                   "TARDBP" = "#8da0cb",
+                   "FUS" = "#e78ac3",
+                   "FIG4" = "#a6d854",
+                   "Other" = "#b3b3b3",
+                   "UBQLN2" = "#ffd92f",
+                   "ANG" = "#e5c494"),
       Disease_duration = disease_duration_col,
       ALSFRS_R = ALSFRS_col,
       Age = age_col,
@@ -957,77 +1108,100 @@ for (tissue in tissues) {
 #                                                 tissue,"_ALS_PGMC_high_detected.xlsx"))
 # }
 
-# for all proteins except NEFL
-# for (tissue in tissues) {
-#   
-#   # Prepara data for ML
-#   # -> PGMC vs CTR
-#   protein_data_PGMCvsCTR = results_ALL[[tissue]]$data_adjusted %>%
-#     filter(type %in% c("PGMC","CTR")) %>%
-#     filter(Target != "NEFL") %>%
-#     select(SampleName,Target,NPQ_adj,type) %>%
-#     pivot_wider(names_from = Target,
-#                 values_from = NPQ_adj)
-#   
-#   protein_data_PGMCvsCTR_new = protein_data_PGMCvsCTR %>%
-#     select(-SampleName) %>%
-#     rename(status = type) %>%
-#     mutate(status = ifelse(status == "PGMC",1,0))
-#   
-#   # -> ALS vs CTR
-#   protein_data_ALSvsCTR = results_ALL[[tissue]]$data_adjusted %>%
-#     filter(type %in% c("ALS","CTR")) %>%
-#     filter(Target != "NEFL") %>%
-#     select(SampleName,Target,NPQ_adj,type) %>%
-#     pivot_wider(names_from = Target,
-#                 values_from = NPQ_adj)
-#   
-#   protein_data_ALSvsCTR_new = protein_data_ALSvsCTR %>%
-#     select(-SampleName) %>%
-#     rename(status = type) %>%
-#     mutate(status = ifelse(status == "ALS",1,0))
-#   
-#   # -> ALS vs PGMC
-#   protein_data_ALSvsPGMC = results_ALL[[tissue]]$data_adjusted %>%
-#     filter(type %in% c("ALS","PGMC")) %>%
-#     filter(Target != "NEFL") %>%
-#     select(SampleName,Target,NPQ_adj,type) %>%
-#     pivot_wider(names_from = Target,
-#                 values_from = NPQ_adj)
-#   
-#   protein_data_ALSvsPGMC_new = protein_data_ALSvsPGMC %>%
-#     select(-SampleName) %>%
-#     rename(status = type) %>%
-#     mutate(status = ifelse(status == "ALS",1,0))
-#   
-#   # Run Lasso and ROC curve with 5-fold cv and 500 bootstrap iterations
-#   # lm_PGMC_CTR <- runML_with_lasso(protein_data_PGMCvsCTR_new,bs_count = 500)
-#   # final_roc_plot_PGMC_CTR = calculateROC(lm_PGMC_CTR,
-#   #                                        paste0("plots/ML/Lasso/without_NEFL/ROC_lm_",tissue,"_PGMC_CTR_noNEFL.pdf"))
-#   lm_ALS_CTR <- runML_with_lasso(protein_data_ALSvsCTR_new,bs_count = 500)
-#   final_roc_plot_ALS_CTR = calculateROC(lm_ALS_CTR,
-#                                         paste0("plots/ML/Lasso/without_NEFL/ROC_lm_",tissue,"_ALS_CTR_noNEFL.pdf"))
-#   # lm_ALS_PGMC <- runML_with_lasso(protein_data_ALSvsPGMC_new,bs_count = 500)
-#   # final_roc_plot_ALS_PGMC = calculateROC(lm_ALS_PGMC,
-#   #                                        paste0("plots/ML/Lasso/without_NEFL/ROC_lm_",tissue,"_ALS_PGMC_noNEFL.pdf"))
-#   # 
-#   # extract weights + plot averaged
-#   # lm_weights_PGMC_CTR = feature_importance(lm_PGMC_CTR,
-#   #                                               plot_path = paste0("plots/ML/Lasso/without_NEFL/protein_selection_",
-#   #                                                                  tissue,"_PGMC_CTR_noNEFL.pdf"))
-#   # write_xlsx(lm_weights_PGMC_CTR, path = paste0("results/weights_lm_",
-#   #                                               tissue,"_PGMC_CTR_noNEFL.xlsx"))
-#   lm_weights_ALS_CTR = feature_importance(lm_ALS_CTR,
-#                                                plot_path = paste0("plots/ML/Lasso/without_NEFL/protein_selection_",
-#                                                                   tissue,"_ALS_CTR_noNEFL.pdf"))
-#   write_xlsx(lm_weights_ALS_CTR, path = paste0("results/weights_lm_",
-#                                                tissue,
-#                                                "_ALS_CTR_noNEFL.xlsx"))
-#   # lm_weights_ALS_PGMC = feature_importance(lm_ALS_PGMC,
-#   #                                               plot_path = paste0("plots/ML/Lasso/without_NEFL/protein_selection_",tissue,"_ALS_PGMC_noNEFL.pdf"))
-#   # write_xlsx(lm_weights_ALS_PGMC, path = paste0("results/weights_lm_",
-#   #                                               tissue,"_ALS_PGMC_noNEFL.xlsx"))
-# }
+#for all proteins except NEFL and NEFH
+for (tissue in tissues) {
+
+  # Prepara data for ML
+  # -> PGMC vs CTR
+  protein_data_PGMCvsCTR = results_ALL[[tissue]]$data_adjusted %>%
+    filter(type %in% c("PGMC","CTR")) %>%
+    filter(!Target %in% c("NEFL","NEFH")) %>%
+    select(SampleName,Target,NPQ_adj,type) %>%
+    pivot_wider(names_from = Target,
+                values_from = NPQ_adj)
+
+  protein_data_PGMCvsCTR_new = protein_data_PGMCvsCTR %>%
+    select(-SampleName) %>%
+    rename(status = type) %>%
+    mutate(status = ifelse(status == "PGMC",1,0))
+
+  # -> ALS vs CTR
+  protein_data_ALSvsCTR = results_ALL[[tissue]]$data_adjusted %>%
+    filter(type %in% c("ALS","CTR")) %>%
+    filter(!Target %in% c("NEFL","NEFH")) %>%
+    select(SampleName,Target,NPQ_adj,type) %>%
+    pivot_wider(names_from = Target,
+                values_from = NPQ_adj)
+
+  protein_data_ALSvsCTR_new = protein_data_ALSvsCTR %>%
+    select(-SampleName) %>%
+    rename(status = type) %>%
+    mutate(status = ifelse(status == "ALS",1,0))
+
+  # -> ALS vs PGMC
+  protein_data_ALSvsPGMC = results_ALL[[tissue]]$data_adjusted %>%
+    filter(type %in% c("ALS","PGMC")) %>%
+    filter(!Target %in% c("NEFL","NEFH")) %>%
+    select(SampleName,Target,NPQ_adj,type) %>%
+    pivot_wider(names_from = Target,
+                values_from = NPQ_adj)
+
+  protein_data_ALSvsPGMC_new = protein_data_ALSvsPGMC %>%
+    select(-SampleName) %>%
+    rename(status = type) %>%
+    mutate(status = ifelse(status == "ALS",1,0))
+
+  # Run Lasso and ROC curve with 5-fold cv and 500 bootstrap iterations
+  lm_PGMC_CTR <- runML_with_lasso(protein_data_PGMCvsCTR_new,bs_count = 500)
+  final_roc_plot_PGMC_CTR = calculateROC(lm_PGMC_CTR,
+                                         paste0("plots/ML/Lasso/without_NEFL_NEFH/ROC_lm_",tissue,"_PGMC_CTR_noNEFL_NEFH.pdf"))
+  lm_ALS_CTR <- runML_with_lasso(protein_data_ALSvsCTR_new,bs_count = 500)
+  final_roc_plot_ALS_CTR = calculateROC(lm_ALS_CTR,
+                                        paste0("plots/ML/Lasso/without_NEFL_NEFH/ROC_lm_",tissue,"_ALS_CTR_noNEFL_NEFH.pdf"))
+  lm_ALS_PGMC <- runML_with_lasso(protein_data_ALSvsPGMC_new,bs_count = 500)
+  final_roc_plot_ALS_PGMC = calculateROC(lm_ALS_PGMC,
+                                         paste0("plots/ML/Lasso/without_NEFL_NEFH/ROC_lm_",tissue,"_ALS_PGMC_noNEFL_NEFH.pdf"))
+
+  
+  lm_enet_PGMC_CTR <- runML_with_elasticnet(protein_data_PGMCvsCTR_new,bs_count = 500)
+  final_roc_plot_PGMC_CTR_enet = calculateROC(lm_enet_PGMC_CTR,
+                                              paste0("plots/ML/Elastic Net/without_NEFL_NEFH/ROC_lm_",tissue,"_PGMC_CTR_noNEFL_NEFH.pdf"))
+  lm_enet_ALS_CTR <- runML_with_elasticnet(protein_data_ALSvsCTR_new,bs_count = 500)
+  final_roc_plot_ALS_CTR_enet = calculateROC(lm_enet_ALS_CTR,
+                                             paste0("plots/ML/Elastic Net/without_NEFL_NEFH/ROC_lm_",tissue,"_ALS_CTR_noNEFL_NEFH.pdf"))
+  lm_enet_ALS_PGMC <- runML_with_elasticnet(protein_data_ALSvsPGMC_new,bs_count = 500)
+  final_roc_plot_ALS_PGMC_enet = calculateROC(lm_enet_ALS_PGMC,
+                                              paste0("plots/ML/Elastic Net/without_NEFL_NEFH/ROC_lm_",tissue,"_ALS_PGMC_noNEFL_NEFH.pdf"))
+  
+  #extract weights + plot averaged (lasso)
+  lm_weights_PGMC_CTR = feature_importance(lm_PGMC_CTR,
+                                                plot_path = paste0("plots/ML/Lasso/without_NEFL_NEFH/protein_selection_",
+                                                                   tissue,"_PGMC_CTR_noNEFL_NEFH.pdf"))
+  write_xlsx(lm_weights_PGMC_CTR, path = paste0("results/weights_lm_",
+                                                tissue,"_PGMC_CTR_noNEFL_NEFH.xlsx"))
+  lm_weights_ALS_CTR = feature_importance(lm_ALS_CTR,
+                                               plot_path = paste0("plots/ML/Lasso/without_NEFL_NEFH/protein_selection_",
+                                                                  tissue,"_ALS_CTR_noNEFL_NEFH.pdf"))
+  write_xlsx(lm_weights_ALS_CTR, path = paste0("results/weights_lm_",
+                                               tissue,
+                                               "_ALS_CTR_noNEFL_NEFH.xlsx"))
+  lm_weights_ALS_PGMC = feature_importance(lm_ALS_PGMC,
+                                                plot_path = paste0("plots/ML/Lasso/without_NEFL_NEFH/protein_selection_",tissue,"_ALS_PGMC_noNEFL_NEFH.pdf"))
+  write_xlsx(lm_weights_ALS_PGMC, path = paste0("results/weights_lm_",
+                                                tissue,"_ALS_PGMC_noNEFL_NEFH.xlsx"))
+  
+  # extract weights + plot averaged (elastic net)
+  lm_weights_PGMC_CTR_enet = feature_importance(lm_enet_PGMC_CTR,
+                                                plot_path = paste0("plots/ML/Elastic Net/without_NEFL_NEFH/protein_selection_",tissue,"_PGMC_CTR_noNEFL_NEFH.pdf"))
+  write_xlsx(lm_weights_PGMC_CTR_enet, path = paste0("results/weights_lm_enet_",tissue,"_PGMC_CTR_noNEFL_NEFH.xlsx"))
+  lm_weights_ALS_CTR_enet = feature_importance(lm_enet_ALS_CTR,
+                                               plot_path = paste0("plots/ML/Elastic Net/without_NEFL_NEFH/protein_selection_",tissue,"_ALS_CTR_noNEFL_NEFH.pdf"))
+  write_xlsx(lm_weights_ALS_CTR_enet, path = paste0("results/weights_lm_enet_",tissue,"_ALS_CTR_noNEFL_NEFH.xlsx"))
+  lm_weights_ALS_PGMC_enet = feature_importance(lm_enet_ALS_PGMC,
+                                                plot_path = paste0("plots/ML/Elastic Net/without_NEFL_NEFH/protein_selection_",tissue,"_ALS_PGMC_noNEFL_NEFH.pdf"))
+  write_xlsx(lm_weights_ALS_PGMC_enet, path = paste0("results/weights_lm_enet_",tissue,"_ALS_PGMC_noNEFL_NEFH.xlsx"))
+  
+}
 
 #### -> Elastic Net modeling
 for (tissue in tissues) {
@@ -1112,7 +1286,8 @@ enet_optimal_protein_signature_serum = find_optimal_signature(results_ALL = resu
                                                                output_prefix = "plots/ML/Elastic Net/performance_")
 
 # Elastic Net + Plasma
-proteins_plasma_ALS_CTR = c("NEFL","NEFH","pTau-181","GDNF","FABP3","IL16","TEK")
+proteins_plasma_ALS_CTR = c("NEFL","NEFH","pTau-181","GDNF","FABP3","IL16","TEK",
+                            "pTau-231","VSNL1","VCAM1")
 enet_optimal_protein_signature_plasma = find_optimal_signature(results_ALL = results_ALL,
                                                               ranked_proteins = proteins_plasma_ALS_CTR,
                                                               fluid = "PLASMA",
@@ -1121,7 +1296,7 @@ enet_optimal_protein_signature_plasma = find_optimal_signature(results_ALL = res
 
 # Elastic Net + CSF
 proteins_CSF_ALS_CTR =  c("NEFL","NEFH","CHIT1","IL6","MSLN","TNF","CHI3L1",
-                          "IL12p70","UCHL1","CCL2","CCL3")
+                          "IL12p70","UCHL1","CCL2")
 
 enet_optimal_protein_signature_CSF = find_optimal_signature(results_ALL = results_ALL,
                                                                ranked_proteins = proteins_CSF_ALS_CTR,
@@ -1140,6 +1315,12 @@ lasso_PGMC_serum_signature = run_ALS_signature_workflow(results_ALL,
                                                         model_type = "lasso",
                                                         output_prefix = "plots/ML/Lasso/")
 
+participant_code_label = lasso_PGMC_serum_signature$results %>%
+  left_join(protein_data_IDs %>% select(SampleName,ParticipantCode,type)) %>%
+  distinct() %>%
+  filter(type == "PGMC" & ALS_risk_score > 0) %>%
+  pull(ParticipantCode)
+
 # ================================================================================
 # Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 6-protein signature
 protein_data_PCA_serum = protein_data_clean %>%
@@ -1149,16 +1330,20 @@ protein_data_PCA_serum = protein_data_clean %>%
 pca_results_serum_adj <- run_pca_adjusted(remove_effect_covariates(protein_data_PCA_serum,keep = "type"), 
                                           "SERUM")
 
-plots_subtype_adj <- plot_pca(pca_results_serum_adj,"SERUM based on 6-protein signature")
+plots_subtype_adj <- plot_pca(pca_results_serum_adj,paste0("serum based on ",
+                                                           length(lasso_optimal_protein_signature_serum$optimal_proteins) ,
+                                                           " protein signature"))
 
 pdf("plots/ML/Lasso/PCA_SERUM_protein_signature.pdf", width = 8, height = 6.5) 
 plots_subtype_adj
 dev.off()
 
 pca_results_serum_adj$scores <- pca_results_serum_adj$scores %>%
-  mutate(ParticipantCode = ifelse(type == "PGMC",ParticipantCode,NA))
+  mutate(ParticipantCode = ifelse(ParticipantCode %in% participant_code_label,ParticipantCode,NA))
 
-plots_subtype_adj_label <- plot_pca(pca_results_serum_adj,"SERUM based on 6-protein signature",
+plots_subtype_adj_label <- plot_pca(pca_results_serum_adj,paste0("serum based on ",
+                                                                 length(lasso_optimal_protein_signature_serum$optimal_proteins) ,
+                                                                 " protein signature"),
                                                        label = TRUE)
 
 pdf("plots/ML/Lasso/PCA_SERUM_protein_signature_label.pdf", width = 8, height = 6.5) 
@@ -1180,7 +1365,7 @@ run_heatmap_signature(results_ALL,
                       lasso_PGMC_serum_signature$results,
                       group_colors = group_colors,
                       output_prefix = "plots/ML/Lasso/heatmap_SERUM",
-                      highlight_ids = c("DE101","TR120","TR112"))
+                      highlight_ids = participant_code_label)
 
 ##### ----
 # Elastic Net
@@ -1192,6 +1377,12 @@ EN_PGMC_serum_signature = run_ALS_signature_workflow(results_ALL,
                                                         model_type = "elastic_net",
                                                         output_prefix = "plots/ML/Elastic Net/")
 
+participant_code_label = EN_PGMC_serum_signature$results %>%
+  left_join(protein_data_IDs %>% select(SampleName,ParticipantCode,type)) %>%
+  distinct() %>%
+  filter(type == "PGMC" & ALS_risk_score > 0) %>%
+  pull(ParticipantCode)
+
 
 # ================================================================================
 # Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 9-protein signature
@@ -1202,16 +1393,20 @@ protein_data_PCA_serum = protein_data_clean %>%
 pca_results_serum_adj <- run_pca_adjusted(remove_effect_covariates(protein_data_PCA_serum,keep = "type"), 
                                           "SERUM")
 
-plots_subtype_adj <- plot_pca(pca_results_serum_adj,"SERUM based on 9-protein signature")
+plots_subtype_adj <- plot_pca(pca_results_serum_adj,paste0("serum based on ",
+                                                           length(enet_optimal_protein_signature_serum$optimal_proteins) ,
+                                                           " protein signature"))
 
 pdf("plots/ML/Elastic Net/PCA_SERUM_protein_signature.pdf", width = 8, height = 6.5) 
 plots_subtype_adj
 dev.off()
 
 pca_results_serum_adj$scores <- pca_results_serum_adj$scores %>%
-  mutate(ParticipantCode = ifelse(type == "PGMC",ParticipantCode,NA))
+  mutate(ParticipantCode = ifelse(ParticipantCode %in% participant_code_label,ParticipantCode,NA))
 
-plots_subtype_adj_label <- plot_pca(pca_results_serum_adj,"SERUM based on 9-protein signature",
+plots_subtype_adj_label <- plot_pca(pca_results_serum_adj,paste0("serum based on ",
+                                                                 length(enet_optimal_protein_signature_serum$optimal_proteins) ,
+                                                                 " protein signature"),
                                     label = TRUE)
 
 pdf("plots/ML/Elastic Net/PCA_SERUM_protein_signature_label.pdf", width = 8, height = 6.5) 
@@ -1228,7 +1423,7 @@ run_heatmap_signature(results_ALL,
                       EN_PGMC_serum_signature$results,
                       group_colors = group_colors,
                       output_prefix = "plots/ML/Elastic Net/heatmap_SERUM",
-                      highlight_ids = c("DE101","TR120","TR114","TR112"))
+                      highlight_ids = participant_code_label)
 
 ## -> Elastic Net + Plasma
 EN_PGMC_plasma_signature = run_ALS_signature_workflow(results_ALL,
@@ -1236,6 +1431,13 @@ EN_PGMC_plasma_signature = run_ALS_signature_workflow(results_ALL,
                                                      fluid = "PLASMA",
                                                      model_type = "elastic_net",
                                                      output_prefix = "plots/ML/Elastic Net/")
+
+
+participant_code_label = EN_PGMC_plasma_signature$results %>%
+  left_join(protein_data_IDs %>% select(SampleName,ParticipantCode,type)) %>%
+  distinct() %>%
+  filter(type == "PGMC" & ALS_risk_score > 0) %>%
+  pull(ParticipantCode)
 
 
 # ================================================================================
@@ -1247,16 +1449,20 @@ protein_data_PCA_PLASMA = protein_data_clean %>%
 pca_results_PLASMA_adj <- run_pca_adjusted(remove_effect_covariates(protein_data_PCA_PLASMA,keep = "type"), 
                                           "PLASMA")
 
-plots_subtype_adj <- plot_pca(pca_results_PLASMA_adj,"PLASMA based on 3-protein signature")
+plots_subtype_adj <- plot_pca(pca_results_PLASMA_adj,paste0("plasma based on ",
+                                                            length(enet_optimal_protein_signature_plasma$optimal_proteins) ,
+                                                            " protein signature"))
 
 pdf("plots/ML/Elastic Net/PCA_PLASMA_protein_signature.pdf", width = 8, height = 6.5) 
 plots_subtype_adj
 dev.off()
 
 pca_results_PLASMA_adj$scores <- pca_results_PLASMA_adj$scores %>%
-  mutate(ParticipantCode = ifelse(type == "PGMC",ParticipantCode,NA))
+  mutate(ParticipantCode = ifelse(ParticipantCode %in% participant_code_label,ParticipantCode,NA))
 
-plots_subtype_adj_label <- plot_pca(pca_results_PLASMA_adj,"PLASMA based on 3-protein signature",
+plots_subtype_adj_label <- plot_pca(pca_results_PLASMA_adj,paste0("plasma based on ",
+                                                                  length(enet_optimal_protein_signature_plasma$optimal_proteins) ,
+                                                                  " protein signature"),
                                     label = TRUE)
 
 pdf("plots/ML/Elastic Net/PCA_PLASMA_protein_signature_label.pdf", width = 8, height = 6.5) 
@@ -1273,7 +1479,7 @@ run_heatmap_signature(results_ALL,
                       EN_PGMC_plasma_signature$results,
                       group_colors = group_colors,
                       output_prefix = "plots/ML/Elastic Net/heatmap_PLASMA",
-                      highlight_ids = c("DE101","TR120","DE102","TR113","TR128"))
+                      highlight_ids = participant_code_label)
 
 ## -> Elastic Net + CSF
 EN_PGMC_CSF_signature = run_ALS_signature_workflow(results_ALL,
@@ -1282,6 +1488,11 @@ EN_PGMC_CSF_signature = run_ALS_signature_workflow(results_ALL,
                                                       model_type = "elastic_net",
                                                       output_prefix = "plots/ML/Elastic Net/")
 
+participant_code_label = EN_PGMC_CSF_signature$results %>%
+  left_join(protein_data_IDs %>% select(SampleName,ParticipantCode,type)) %>%
+  distinct() %>%
+  filter(type == "PGMC" & ALS_risk_score > 0) %>%
+  pull(ParticipantCode)
 
 # ================================================================================
 # Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 2-protein signature
@@ -1292,16 +1503,20 @@ protein_data_PCA_CSF = protein_data_clean %>%
 pca_results_CSF_adj <- run_pca_adjusted(remove_effect_covariates(protein_data_PCA_CSF,keep = "type"), 
                                            "CSF")
 
-plots_subtype_adj <- plot_pca(pca_results_CSF_adj,"CSF based on 2-protein signature")
+plots_subtype_adj <- plot_pca(pca_results_CSF_adj,paste0("CSF based on ",
+                                                         length(enet_optimal_protein_signature_CSF$optimal_proteins) ,
+                                                         " protein signature"))
 
 pdf("plots/ML/Elastic Net/PCA_CSF_protein_signature.pdf", width = 8, height = 6.5) 
 plots_subtype_adj
 dev.off()
 
 pca_results_CSF_adj$scores <- pca_results_CSF_adj$scores %>%
-  mutate(ParticipantCode = ifelse(type == "PGMC",ParticipantCode,NA))
+  mutate(ParticipantCode = ifelse(ParticipantCode %in% participant_code_label,ParticipantCode,NA))
 
-plots_subtype_adj_label <- plot_pca(pca_results_CSF_adj,"CSF based on 2-protein signature",
+plots_subtype_adj_label <- plot_pca(pca_results_CSF_adj,paste0("CSF based on ",
+                                                               length(enet_optimal_protein_signature_CSF$optimal_proteins) ,
+                                                               " protein signature"),
                                     label = TRUE)
 
 pdf("plots/ML/Elastic Net/PCA_CSF_protein_signature_label.pdf", width = 8, height = 6.5) 
@@ -1318,7 +1533,7 @@ run_heatmap_signature(results_ALL,
                       EN_PGMC_CSF_signature$results,
                       group_colors = group_colors,
                       output_prefix = "plots/ML/Elastic Net/heatmap_CSF",
-                      highlight_ids = c("DE101"))
+                      highlight_ids = participant_code_label)
 
 
 

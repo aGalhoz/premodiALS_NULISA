@@ -25,9 +25,9 @@ add_log2fc_standard <- function(df) {
     mutate(
       log2FC_ALS_CTR = mean_NPQ_ALS - mean_NPQ_CTR,
       log2FC_ALS_PGMC = mean_NPQ_ALS - mean_NPQ_PGMC,
-      log2FC_ALS_mimic = mean_NPQ_ALS - mean_NPQ_mimic,
-      log2FC_mimic_CTR = mean_NPQ_mimic - mean_NPQ_CTR,
-      log2FC_PGMC_mimic = mean_NPQ_PGMC - mean_NPQ_mimic,
+      #log2FC_ALS_mimic = mean_NPQ_ALS - mean_NPQ_mimic,
+      #log2FC_mimic_CTR = mean_NPQ_mimic - mean_NPQ_CTR,
+      #log2FC_PGMC_mimic = mean_NPQ_PGMC - mean_NPQ_mimic,
       log2FC_PGMC_CTR = mean_NPQ_PGMC - mean_NPQ_CTR
     )
 }
@@ -73,15 +73,15 @@ finalise_DE_table <- function(df,PGMC_groups = FALSE) {
         Target, UniProtID, Fluid,pvalue_anova,
         contains("ALS_CTR"),contains("CTR_ALS"),
         contains("ALS_PGMC"),contains("PGMC_ALS"),
-        contains("ALS_mimic"),contains("mimic_ALS"),
-        contains("mimic_CTR"),contains("CTR_mimic"),
-        contains("PGMC_CTR"),contains("CTR_PGMC"),
-        contains("PGMC_mimic"),contains("mimic_PGMC")) %>%
+        #contains("ALS_mimic"),contains("mimic_ALS"),
+        #contains("mimic_CTR"),contains("CTR_mimic"),
+        #contains("PGMC_mimic"),contains("mimic_PGMC"),
+        contains("PGMC_CTR"),contains("CTR_PGMC")) %>%
       rename_with(~ gsub("CTR_ALS", "ALS_CTR", .x), .cols = contains("CTR_ALS")) %>%
       rename_with(~ gsub("PGMC_ALS", "ALS_PGMC", .x), .cols = contains("PGMC_ALS")) %>%
-      rename_with(~ gsub("CTR_mimic", "mimic_CTR", .x), .cols = contains("CTR_mimic")) %>%
-      rename_with(~ gsub("CTR_PGMC", "PGMC_CTR", .x), .cols = contains("CTR_PGMC")) %>%
-      rename_with(~ gsub("mimic_PGMC", "PGMC_mimic", .x), .cols = contains("mimic_PGMC"))
+      #rename_with(~ gsub("mimic_PGMC", "PGMC_mimic", .x), .cols = contains("mimic_PGMC")) %>%
+      #rename_with(~ gsub("CTR_mimic", "mimic_CTR", .x), .cols = contains("CTR_mimic")) %>%
+      rename_with(~ gsub("CTR_PGMC", "PGMC_CTR", .x), .cols = contains("CTR_PGMC")) 
   }
 }
 
@@ -403,138 +403,138 @@ dev.off()
 volcano_plots_ALS_PGMC = volcano_plots
 
 ## 3: ALS vs mimic 
-volcano_plots <- list()
-colors_v <- c('mimic' = "#C25F3D", 'ns' = 'lightgrey', 'ALS'= "#3da0c2")
-
-for (tissue in tissues) {
-  message(paste("Generating volcano plots for:", tissue))
-  
-  # --- 1. Standard (Not Adjusted) ---
-  # Pulling from our structured list: DE_results[[tissue]]$standard
-  df_std <- DE_results[[tissue]]$standard %>%
-    select(Target, UniProtID, log2FC_ALS_mimic, pvalue_ALS_mimic, padj_ALS_mimic) %>%
-    add_DE_flag(lfc = "log2FC_ALS_mimic", padj = "padj_ALS_mimic", up = "ALS", down = "mimic", alpha = 0.1)
-  
-  volcano_plots[[tissue]]$std <- volcano_plot(
-    df_std, "log2FC_ALS_mimic", fdr = 0.1,
-    title = paste("ALS vs mimic in", tissue),
-    colors = colors_v)
-  
-  # --- 2. Standard (Adjusted) ---
-  df_adj <- DE_results[[tissue]]$standard_adj %>%
-    select(Target, UniProtID, log2FC_ALS_mimic, pvalue_ALS_mimic, padj_ALS_mimic) %>%
-    add_DE_flag(lfc = "log2FC_ALS_mimic", padj = "padj_ALS_mimic", up = "ALS", down = "mimic", alpha = 0.1)
-  
-  volcano_plots[[tissue]]$adj <- volcano_plot(
-    df_adj, "log2FC_ALS_mimic", fdr = 0.1,
-    title = paste("ALS vs mimic in", tissue, "(adjusted)"),
-    colors = colors_v
-  )
-  
-  # --- 3. Adjusted + P-Value (with special labels) ---
-  df_pv <- DE_results[[tissue]]$standard_adj %>%
-    select(Target, UniProtID, log2FC_ALS_mimic, pvalue_ALS_mimic, padj_ALS_mimic, pvalue_anova) %>%
-    add_DE_flag(lfc = "log2FC_ALS_mimic", padj = "pvalue_ALS_mimic", up = "ALS", down = "mimic", alpha = 0.05)
-  
-  # Auto-calculate targets based on criteria
-  targets <- df_pv %>% 
-    filter(pvalue_anova < 0.05 & pvalue_ALS_mimic < 0.05) %>% 
-    pull(Target)
-  
-  volcano_plots[[tissue]]$pv_adj <- volcano_plot_pvalue(
-    df_pv, "log2FC_ALS_mimic", 
-    title = paste("ALS vs mimic in", tissue, "(adj + p-value)"),
-    colors = colors_v,
-    label_targets = targets,
-    target_color = "#702963")
-}
-
-# PDF 1: Standard vs Adjusted (FDR 10%)
-pdf("plots/volcano_plots/volcano_ALS_mimic_all_FDR10.pdf", width = 14, height = 15)
-grid.arrange(
-  volcano_plots$PLASMA$std, volcano_plots$PLASMA$adj,
-  volcano_plots$SERUM$std,  volcano_plots$SERUM$adj,
-  volcano_plots$CSF$std,    volcano_plots$CSF$adj,
-  nrow = 3, ncol = 2)
-dev.off()
-
-# PDF 2: P-value Highlight vs Adjusted
-pdf("plots/volcano_plots/volcano_ALS_mimic_all_pvalue5_FDR10.pdf", width = 14, height = 15)
-grid.arrange(
-  volcano_plots$PLASMA$pv_adj, volcano_plots$PLASMA$adj,
-  volcano_plots$SERUM$pv_adj,  volcano_plots$SERUM$adj,
-  volcano_plots$CSF$pv_adj,    volcano_plots$CSF$adj,
-  nrow = 3, ncol = 2)
-dev.off()
-
-volcano_plots_ALS_mimic = volcano_plots
-
-## 4: mimic vs CTR 
-volcano_plots <- list()
-colors_v <- c('CTR' = "#C25F3D", 'ns' = 'lightgrey', 'mimic'= "#3da0c2")
-
-for (tissue in tissues) {
-  message(paste("Generating volcano plots for:", tissue))
-  
-  # --- 1. Standard (Not Adjusted) ---
-  # Pulling from our structured list: DE_results[[tissue]]$standard
-  df_std <- DE_results[[tissue]]$standard %>%
-    select(Target, UniProtID, log2FC_mimic_CTR, pvalue_mimic_CTR, padj_mimic_CTR) %>%
-    add_DE_flag(lfc = "log2FC_mimic_CTR", padj = "padj_mimic_CTR", up = "mimic", down = "CTR", alpha = 0.1)
-  
-  volcano_plots[[tissue]]$std <- volcano_plot(
-    df_std, "log2FC_mimic_CTR", fdr = 0.1,
-    title = paste("mimic vs CTR in", tissue),
-    colors = colors_v)
-  
-  # --- 2. Standard (Adjusted) ---
-  df_adj <- DE_results[[tissue]]$standard_adj %>%
-    select(Target, UniProtID, log2FC_mimic_CTR, pvalue_mimic_CTR, padj_mimic_CTR) %>%
-    add_DE_flag(lfc = "log2FC_mimic_CTR", padj = "padj_mimic_CTR", up = "mimic", down = "CTR", alpha = 0.1)
-  
-  volcano_plots[[tissue]]$adj <- volcano_plot(
-    df_adj, "log2FC_mimic_CTR", fdr = 0.1,
-    title = paste("mimic vs CTR in", tissue, "(adjusted)"),
-    colors = colors_v
-  )
-  
-  # --- 3. Adjusted + P-Value (with special labels) ---
-  df_pv <- DE_results[[tissue]]$standard_adj %>%
-    select(Target, UniProtID, log2FC_mimic_CTR, pvalue_mimic_CTR, padj_mimic_CTR, pvalue_anova) %>%
-    add_DE_flag(lfc = "log2FC_mimic_CTR", padj = "pvalue_mimic_CTR", up = "mimic", down = "CTR", alpha = 0.05)
-  
-  # Auto-calculate targets based on criteria
-  targets <- df_pv %>% 
-    filter(pvalue_anova < 0.05 & pvalue_mimic_CTR < 0.05) %>% 
-    pull(Target)
-  
-  volcano_plots[[tissue]]$pv_adj <- volcano_plot_pvalue(
-    df_pv, "log2FC_mimic_CTR", 
-    title = paste("mimic vs CTR in", tissue, "(adj + p-value)"),
-    colors = colors_v,
-    label_targets = targets,
-    target_color = "#702963")
-}
+# volcano_plots <- list()
+# colors_v <- c('mimic' = "#C25F3D", 'ns' = 'lightgrey', 'ALS'= "#3da0c2")
+# 
+# for (tissue in tissues) {
+#   message(paste("Generating volcano plots for:", tissue))
+#   
+#   # --- 1. Standard (Not Adjusted) ---
+#   # Pulling from our structured list: DE_results[[tissue]]$standard
+#   df_std <- DE_results[[tissue]]$standard %>%
+#     select(Target, UniProtID, log2FC_ALS_mimic, pvalue_ALS_mimic, padj_ALS_mimic) %>%
+#     add_DE_flag(lfc = "log2FC_ALS_mimic", padj = "padj_ALS_mimic", up = "ALS", down = "mimic", alpha = 0.1)
+#   
+#   volcano_plots[[tissue]]$std <- volcano_plot(
+#     df_std, "log2FC_ALS_mimic", fdr = 0.1,
+#     title = paste("ALS vs mimic in", tissue),
+#     colors = colors_v)
+#   
+#   # --- 2. Standard (Adjusted) ---
+#   df_adj <- DE_results[[tissue]]$standard_adj %>%
+#     select(Target, UniProtID, log2FC_ALS_mimic, pvalue_ALS_mimic, padj_ALS_mimic) %>%
+#     add_DE_flag(lfc = "log2FC_ALS_mimic", padj = "padj_ALS_mimic", up = "ALS", down = "mimic", alpha = 0.1)
+#   
+#   volcano_plots[[tissue]]$adj <- volcano_plot(
+#     df_adj, "log2FC_ALS_mimic", fdr = 0.1,
+#     title = paste("ALS vs mimic in", tissue, "(adjusted)"),
+#     colors = colors_v
+#   )
+#   
+#   # --- 3. Adjusted + P-Value (with special labels) ---
+#   df_pv <- DE_results[[tissue]]$standard_adj %>%
+#     select(Target, UniProtID, log2FC_ALS_mimic, pvalue_ALS_mimic, padj_ALS_mimic, pvalue_anova) %>%
+#     add_DE_flag(lfc = "log2FC_ALS_mimic", padj = "pvalue_ALS_mimic", up = "ALS", down = "mimic", alpha = 0.05)
+#   
+#   # Auto-calculate targets based on criteria
+#   targets <- df_pv %>% 
+#     filter(pvalue_anova < 0.05 & pvalue_ALS_mimic < 0.05) %>% 
+#     pull(Target)
+#   
+#   volcano_plots[[tissue]]$pv_adj <- volcano_plot_pvalue(
+#     df_pv, "log2FC_ALS_mimic", 
+#     title = paste("ALS vs mimic in", tissue, "(adj + p-value)"),
+#     colors = colors_v,
+#     label_targets = targets,
+#     target_color = "#702963")
+# }
 
 # PDF 1: Standard vs Adjusted (FDR 10%)
-pdf("plots/volcano_plots/volcano_mimic_CTR_all_FDR10.pdf", width = 14, height = 15)
-grid.arrange(
-  volcano_plots$PLASMA$std, volcano_plots$PLASMA$adj,
-  volcano_plots$SERUM$std,  volcano_plots$SERUM$adj,
-  volcano_plots$CSF$std,    volcano_plots$CSF$adj,
-  nrow = 3, ncol = 2)
-dev.off()
-
-# PDF 2: P-value Highlight vs Adjusted
-pdf("plots/volcano_plots/volcano_mimic_CTR_all_pvalue5_FDR10.pdf", width = 14, height = 15)
-grid.arrange(
-  volcano_plots$PLASMA$pv_adj, volcano_plots$PLASMA$adj,
-  volcano_plots$SERUM$pv_adj,  volcano_plots$SERUM$adj,
-  volcano_plots$CSF$pv_adj,    volcano_plots$CSF$adj,
-  nrow = 3, ncol = 2)
-dev.off()
-
-volcano_plots_mimic_CTR = volcano_plots
+# pdf("plots/volcano_plots/volcano_ALS_mimic_all_FDR10.pdf", width = 14, height = 15)
+# grid.arrange(
+#   volcano_plots$PLASMA$std, volcano_plots$PLASMA$adj,
+#   volcano_plots$SERUM$std,  volcano_plots$SERUM$adj,
+#   volcano_plots$CSF$std,    volcano_plots$CSF$adj,
+#   nrow = 3, ncol = 2)
+# dev.off()
+# 
+# # PDF 2: P-value Highlight vs Adjusted
+# pdf("plots/volcano_plots/volcano_ALS_mimic_all_pvalue5_FDR10.pdf", width = 14, height = 15)
+# grid.arrange(
+#   volcano_plots$PLASMA$pv_adj, volcano_plots$PLASMA$adj,
+#   volcano_plots$SERUM$pv_adj,  volcano_plots$SERUM$adj,
+#   volcano_plots$CSF$pv_adj,    volcano_plots$CSF$adj,
+#   nrow = 3, ncol = 2)
+# dev.off()
+# 
+# volcano_plots_ALS_mimic = volcano_plots
+# 
+# ## 4: mimic vs CTR 
+# volcano_plots <- list()
+# colors_v <- c('CTR' = "#C25F3D", 'ns' = 'lightgrey', 'mimic'= "#3da0c2")
+# 
+# for (tissue in tissues) {
+#   message(paste("Generating volcano plots for:", tissue))
+#   
+#   # --- 1. Standard (Not Adjusted) ---
+#   # Pulling from our structured list: DE_results[[tissue]]$standard
+#   df_std <- DE_results[[tissue]]$standard %>%
+#     select(Target, UniProtID, log2FC_mimic_CTR, pvalue_mimic_CTR, padj_mimic_CTR) %>%
+#     add_DE_flag(lfc = "log2FC_mimic_CTR", padj = "padj_mimic_CTR", up = "mimic", down = "CTR", alpha = 0.1)
+#   
+#   volcano_plots[[tissue]]$std <- volcano_plot(
+#     df_std, "log2FC_mimic_CTR", fdr = 0.1,
+#     title = paste("mimic vs CTR in", tissue),
+#     colors = colors_v)
+#   
+#   # --- 2. Standard (Adjusted) ---
+#   df_adj <- DE_results[[tissue]]$standard_adj %>%
+#     select(Target, UniProtID, log2FC_mimic_CTR, pvalue_mimic_CTR, padj_mimic_CTR) %>%
+#     add_DE_flag(lfc = "log2FC_mimic_CTR", padj = "padj_mimic_CTR", up = "mimic", down = "CTR", alpha = 0.1)
+#   
+#   volcano_plots[[tissue]]$adj <- volcano_plot(
+#     df_adj, "log2FC_mimic_CTR", fdr = 0.1,
+#     title = paste("mimic vs CTR in", tissue, "(adjusted)"),
+#     colors = colors_v
+#   )
+#   
+#   # --- 3. Adjusted + P-Value (with special labels) ---
+#   df_pv <- DE_results[[tissue]]$standard_adj %>%
+#     select(Target, UniProtID, log2FC_mimic_CTR, pvalue_mimic_CTR, padj_mimic_CTR, pvalue_anova) %>%
+#     add_DE_flag(lfc = "log2FC_mimic_CTR", padj = "pvalue_mimic_CTR", up = "mimic", down = "CTR", alpha = 0.05)
+#   
+#   # Auto-calculate targets based on criteria
+#   targets <- df_pv %>% 
+#     filter(pvalue_anova < 0.05 & pvalue_mimic_CTR < 0.05) %>% 
+#     pull(Target)
+#   
+#   volcano_plots[[tissue]]$pv_adj <- volcano_plot_pvalue(
+#     df_pv, "log2FC_mimic_CTR", 
+#     title = paste("mimic vs CTR in", tissue, "(adj + p-value)"),
+#     colors = colors_v,
+#     label_targets = targets,
+#     target_color = "#702963")
+# }
+# 
+# # PDF 1: Standard vs Adjusted (FDR 10%)
+# pdf("plots/volcano_plots/volcano_mimic_CTR_all_FDR10.pdf", width = 14, height = 15)
+# grid.arrange(
+#   volcano_plots$PLASMA$std, volcano_plots$PLASMA$adj,
+#   volcano_plots$SERUM$std,  volcano_plots$SERUM$adj,
+#   volcano_plots$CSF$std,    volcano_plots$CSF$adj,
+#   nrow = 3, ncol = 2)
+# dev.off()
+# 
+# # PDF 2: P-value Highlight vs Adjusted
+# pdf("plots/volcano_plots/volcano_mimic_CTR_all_pvalue5_FDR10.pdf", width = 14, height = 15)
+# grid.arrange(
+#   volcano_plots$PLASMA$pv_adj, volcano_plots$PLASMA$adj,
+#   volcano_plots$SERUM$pv_adj,  volcano_plots$SERUM$adj,
+#   volcano_plots$CSF$pv_adj,    volcano_plots$CSF$adj,
+#   nrow = 3, ncol = 2)
+# dev.off()
+# 
+# volcano_plots_mimic_CTR = volcano_plots
 
 ## 5: PGMC vs CTR 
 volcano_plots <- list()
@@ -603,72 +603,72 @@ dev.off()
 
 volcano_plots_PGMC_CTR = volcano_plots
 
-## 6: PGMC vs mimic 
-volcano_plots <- list()
-colors_v <- c('mimic' = "#C25F3D", 'ns' = 'lightgrey', 'PGMC'= "#3da0c2")
-
-for (tissue in tissues) {
-  message(paste("Generating volcano plots for:", tissue))
-  
-  # --- 1. Standard (Not Adjusted) ---
-  # Pulling from our structured list: DE_results[[tissue]]$standard
-  df_std <- DE_results[[tissue]]$standard %>%
-    select(Target, UniProtID, log2FC_PGMC_mimic, pvalue_PGMC_mimic, padj_PGMC_mimic) %>%
-    add_DE_flag(lfc = "log2FC_PGMC_mimic", padj = "padj_PGMC_mimic", up = "PGMC", down = "mimic", alpha = 0.1)
-  
-  volcano_plots[[tissue]]$std <- volcano_plot(
-    df_std, "log2FC_PGMC_mimic", fdr = 0.1,
-    title = paste("PGMC vs mimic in", tissue),
-    colors = colors_v)
-  
-  # --- 2. Standard (Adjusted) ---
-  df_adj <- DE_results[[tissue]]$standard_adj %>%
-    select(Target, UniProtID, log2FC_PGMC_mimic, pvalue_PGMC_mimic, padj_PGMC_mimic) %>%
-    add_DE_flag(lfc = "log2FC_PGMC_mimic", padj = "padj_PGMC_mimic", up = "PGMC", down = "mimic", alpha = 0.1)
-  
-  volcano_plots[[tissue]]$adj <- volcano_plot(
-    df_adj, "log2FC_PGMC_mimic", fdr = 0.1,
-    title = paste("PGMC vs mimic in", tissue, "(adjusted)"),
-    colors = colors_v
-  )
-  
-  # --- 3. Adjusted + P-Value (with special labels) ---
-  df_pv <- DE_results[[tissue]]$standard_adj %>%
-    select(Target, UniProtID, log2FC_PGMC_mimic, pvalue_PGMC_mimic, padj_PGMC_mimic, pvalue_anova) %>%
-    add_DE_flag(lfc = "log2FC_PGMC_mimic", padj = "pvalue_PGMC_mimic", up = "PGMC", down = "mimic", alpha = 0.05)
-  
-  # Auto-calculate targets based on criteria
-  targets <- df_pv %>% 
-    filter(pvalue_anova < 0.05 & pvalue_PGMC_mimic < 0.05) %>% 
-    pull(Target)
-  
-  volcano_plots[[tissue]]$pv_adj <- volcano_plot_pvalue(
-    df_pv, "log2FC_PGMC_mimic", 
-    title = paste("PGMC vs mimic in", tissue, "(adj + p-value)"),
-    colors = colors_v,
-    label_targets = targets,
-    target_color = "#702963")
-}
-
-# PDF 1: Standard vs Adjusted (FDR 10%)
-pdf("plots/volcano_plots/volcano_PGMC_mimic_all_FDR10.pdf", width = 14, height = 15)
-grid.arrange(
-  volcano_plots$PLASMA$std, volcano_plots$PLASMA$adj,
-  volcano_plots$SERUM$std,  volcano_plots$SERUM$adj,
-  volcano_plots$CSF$std,    volcano_plots$CSF$adj,
-  nrow = 3, ncol = 2)
-dev.off()
-
-# PDF 2: P-value Highlight vs Adjusted
-pdf("plots/volcano_plots/volcano_PGMC_mimic_all_pvalue5_FDR10.pdf", width = 14, height = 15)
-grid.arrange(
-  volcano_plots$PLASMA$pv_adj, volcano_plots$PLASMA$adj,
-  volcano_plots$SERUM$pv_adj,  volcano_plots$SERUM$adj,
-  volcano_plots$CSF$pv_adj,    volcano_plots$CSF$adj,
-  nrow = 3, ncol = 2)
-dev.off()
-
-volcano_plots_PGMC_mimic = volcano_plots
+# ## 6: PGMC vs mimic 
+# volcano_plots <- list()
+# colors_v <- c('mimic' = "#C25F3D", 'ns' = 'lightgrey', 'PGMC'= "#3da0c2")
+# 
+# for (tissue in tissues) {
+#   message(paste("Generating volcano plots for:", tissue))
+#   
+#   # --- 1. Standard (Not Adjusted) ---
+#   # Pulling from our structured list: DE_results[[tissue]]$standard
+#   df_std <- DE_results[[tissue]]$standard %>%
+#     select(Target, UniProtID, log2FC_PGMC_mimic, pvalue_PGMC_mimic, padj_PGMC_mimic) %>%
+#     add_DE_flag(lfc = "log2FC_PGMC_mimic", padj = "padj_PGMC_mimic", up = "PGMC", down = "mimic", alpha = 0.1)
+#   
+#   volcano_plots[[tissue]]$std <- volcano_plot(
+#     df_std, "log2FC_PGMC_mimic", fdr = 0.1,
+#     title = paste("PGMC vs mimic in", tissue),
+#     colors = colors_v)
+#   
+#   # --- 2. Standard (Adjusted) ---
+#   df_adj <- DE_results[[tissue]]$standard_adj %>%
+#     select(Target, UniProtID, log2FC_PGMC_mimic, pvalue_PGMC_mimic, padj_PGMC_mimic) %>%
+#     add_DE_flag(lfc = "log2FC_PGMC_mimic", padj = "padj_PGMC_mimic", up = "PGMC", down = "mimic", alpha = 0.1)
+#   
+#   volcano_plots[[tissue]]$adj <- volcano_plot(
+#     df_adj, "log2FC_PGMC_mimic", fdr = 0.1,
+#     title = paste("PGMC vs mimic in", tissue, "(adjusted)"),
+#     colors = colors_v
+#   )
+#   
+#   # --- 3. Adjusted + P-Value (with special labels) ---
+#   df_pv <- DE_results[[tissue]]$standard_adj %>%
+#     select(Target, UniProtID, log2FC_PGMC_mimic, pvalue_PGMC_mimic, padj_PGMC_mimic, pvalue_anova) %>%
+#     add_DE_flag(lfc = "log2FC_PGMC_mimic", padj = "pvalue_PGMC_mimic", up = "PGMC", down = "mimic", alpha = 0.05)
+#   
+#   # Auto-calculate targets based on criteria
+#   targets <- df_pv %>% 
+#     filter(pvalue_anova < 0.05 & pvalue_PGMC_mimic < 0.05) %>% 
+#     pull(Target)
+#   
+#   volcano_plots[[tissue]]$pv_adj <- volcano_plot_pvalue(
+#     df_pv, "log2FC_PGMC_mimic", 
+#     title = paste("PGMC vs mimic in", tissue, "(adj + p-value)"),
+#     colors = colors_v,
+#     label_targets = targets,
+#     target_color = "#702963")
+# }
+# 
+# # PDF 1: Standard vs Adjusted (FDR 10%)
+# pdf("plots/volcano_plots/volcano_PGMC_mimic_all_FDR10.pdf", width = 14, height = 15)
+# grid.arrange(
+#   volcano_plots$PLASMA$std, volcano_plots$PLASMA$adj,
+#   volcano_plots$SERUM$std,  volcano_plots$SERUM$adj,
+#   volcano_plots$CSF$std,    volcano_plots$CSF$adj,
+#   nrow = 3, ncol = 2)
+# dev.off()
+# 
+# # PDF 2: P-value Highlight vs Adjusted
+# pdf("plots/volcano_plots/volcano_PGMC_mimic_all_pvalue5_FDR10.pdf", width = 14, height = 15)
+# grid.arrange(
+#   volcano_plots$PLASMA$pv_adj, volcano_plots$PLASMA$adj,
+#   volcano_plots$SERUM$pv_adj,  volcano_plots$SERUM$adj,
+#   volcano_plots$CSF$pv_adj,    volcano_plots$CSF$adj,
+#   nrow = 3, ncol = 2)
+# dev.off()
+# 
+# volcano_plots_PGMC_mimic = volcano_plots
 
 ## 7: C9orf72 vs CTR 
 volcano_plots <- list()
@@ -938,10 +938,10 @@ volcano_plots_C9orf72_SOD1 = volcano_plots
 master_volcano_list <- list(
   "ALS_CTR"     = volcano_plots_ALS_CTR,
   "ALS_PGMC"    = volcano_plots_ALS_PGMC,
-  "ALS_mimic"   = volcano_plots_ALS_mimic,
-  "mimic_CTR"   = volcano_plots_mimic_CTR,
+  #"ALS_mimic"   = volcano_plots_ALS_mimic,
+  #"mimic_CTR"   = volcano_plots_mimic_CTR,
   "PGMC_CTR"    = volcano_plots_PGMC_CTR,
-  "PGMC_mimic"  = volcano_plots_PGMC_mimic,
+  #"PGMC_mimic"  = volcano_plots_PGMC_mimic,
   "C9orf72_CTR" = volcano_plots_C9orf72_CTR,
   "SOD1_CTR"    = volcano_plots_SOD1_CTR,
   "TARDBP_CTR"  = volcano_plots_TARDBP_CTR,
@@ -1028,22 +1028,22 @@ classify_ALS_PGMC_CTR <- function(df){
   
 }
 
-classify_ALS_mimic <- function(df){
-  
-  df %>%
-    mutate(
-      DE_new = case_when(
-        DE_ALS_CTR == "CTR" & DE_mimic_CTR == "CTR" ~ "CTR sign. both",
-        DE_ALS_CTR == "ALS" & DE_mimic_CTR == "mimic" ~ "ALS and mimic",
-        DE_ALS_CTR == "CTR" ~ "CTR",
-        DE_ALS_CTR == "ALS" ~ "ALS",
-        DE_mimic_CTR == "mimic" ~ "mimic",
-        DE_mimic_CTR == "CTR" ~ "CTR",
-        TRUE ~ "ns"
-      )
-    )
-  
-}
+# classify_ALS_mimic <- function(df){
+#   
+#   df %>%
+#     mutate(
+#       DE_new = case_when(
+#         DE_ALS_CTR == "CTR" & DE_mimic_CTR == "CTR" ~ "CTR sign. both",
+#         DE_ALS_CTR == "ALS" & DE_mimic_CTR == "mimic" ~ "ALS and mimic",
+#         DE_ALS_CTR == "CTR" ~ "CTR",
+#         DE_ALS_CTR == "ALS" ~ "ALS",
+#         DE_mimic_CTR == "mimic" ~ "mimic",
+#         DE_mimic_CTR == "CTR" ~ "CTR",
+#         TRUE ~ "ns"
+#       )
+#     )
+#   
+# }
 
 classify_C9_SOD1 <- function(df){
   
@@ -1143,7 +1143,9 @@ signed_plot <- function(data, xvar, yvar, title, colors, label_type = "default",
 
 # Define the components 
 tissues <- c("PLASMA", "CSF", "SERUM")
-comparisons <- c("ALS_CTR", "ALS_PGMC", "PGMC_CTR", "mimic_CTR", "C9orf72_CTR", "SOD1_CTR")
+comparisons <- c("ALS_CTR", "ALS_PGMC", "PGMC_CTR", 
+                # "mimic_CTR", 
+                 "C9orf72_CTR", "SOD1_CTR")
 
 datasets <- list()
 
@@ -1274,39 +1276,39 @@ for(tissue in names(datasets)){
     )
     
     
-    ### ALS vs CTR + mimic vs CTR
-    
-    df1 <- compute_signed(tissue_data$ALS_CTR,"log2FC_ALS_CTR","ALS_CTR",
-                          up = "ALS",down = "CTR",
-                          alpha_threshold = alpha,
-                          use_fdr = use_fdr_flag)
-    df2 <- compute_signed(tissue_data$mimic_CTR,"log2FC_mimic_CTR","mimic_CTR",
-                          up = "mimic",down = "CTR",
-                          alpha_threshold = alpha,
-                          use_fdr = use_fdr_flag)
-    
-    merged <- inner_join(df1,df2) %>%
-      classify_ALS_mimic()
-    
-    p <- signed_plot(
-      merged,
-      "signed_ALS_CTR",
-      "signed_mimic_CTR",
-      paste0("ALS vs CTR + mimic vs CTR (",toupper(tissue),")"),
-      colors,
-      label_type = current_label_type,alpha = alpha)
-    
-    ggsave(
-      paste0(
-        "plots/signed_plots/signed_ALSvsCTR_mimicvsCTR_",
-        tissue,"_",
-        version,
-        ".pdf"
-      ),
-      p,
-      width=7,
-      height=6
-    )
+    # ### ALS vs CTR + mimic vs CTR
+    # 
+    # df1 <- compute_signed(tissue_data$ALS_CTR,"log2FC_ALS_CTR","ALS_CTR",
+    #                       up = "ALS",down = "CTR",
+    #                       alpha_threshold = alpha,
+    #                       use_fdr = use_fdr_flag)
+    # df2 <- compute_signed(tissue_data$mimic_CTR,"log2FC_mimic_CTR","mimic_CTR",
+    #                       up = "mimic",down = "CTR",
+    #                       alpha_threshold = alpha,
+    #                       use_fdr = use_fdr_flag)
+    # 
+    # merged <- inner_join(df1,df2) %>%
+    #   classify_ALS_mimic()
+    # 
+    # p <- signed_plot(
+    #   merged,
+    #   "signed_ALS_CTR",
+    #   "signed_mimic_CTR",
+    #   paste0("ALS vs CTR + mimic vs CTR (",toupper(tissue),")"),
+    #   colors,
+    #   label_type = current_label_type,alpha = alpha)
+    # 
+    # ggsave(
+    #   paste0(
+    #     "plots/signed_plots/signed_ALSvsCTR_mimicvsCTR_",
+    #     tissue,"_",
+    #     version,
+    #     ".pdf"
+    #   ),
+    #   p,
+    #   width=7,
+    #   height=6
+    # )
     
     
     ### C9orf72 vs CTR + SOD1 vs CTR

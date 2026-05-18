@@ -1,4 +1,5 @@
 ### Libraries
+install.packages("ggnewscale")
 library(dplyr)
 library(readr)
 library(readxl)
@@ -21,7 +22,6 @@ library(grid)
 library(limma)
 library(showtext)
 showtext_auto()  # ensures UTF-8 + font rendering
-install.packages("ggnewscale")
 library(ggnewscale)
 library(glmnet)
 library(pROC)
@@ -45,19 +45,21 @@ dir.create(file.path(getwd(),'plots/PCA_plots'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/volcano_plots'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/signed_plots'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/NPQ_fluid_plate'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/detectability'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/ML'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/ML/Lasso'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/ML/Elastic Net'), showWarnings = FALSE)
 dir.create(file.path(getwd(),'plots/ML/Lasso/high_detectable'), showWarnings = FALSE)
-dir.create(file.path(getwd(),'plots/ML/Lasso/without_NEFL'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/ML/Lasso/without_NEFL_NEFH'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'plots/ML/Elastic Net/without_NEFL_NEFH'), showWarnings = FALSE)
 
 ### Collect data
 # new documentation from 12-03-2026
-GeneralDocumentation <- read_delim("data input/export-2026-03-24-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK_267participants/GeneralDocumentation.csv", 
+GeneralDocumentation <- read_delim("data input/export-2026-05-11-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK_271participants/GeneralDocumentation.csv", 
            delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
-GeneralDocumentation_old <- read_delim("data input/export-2025-08-27-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK/GeneralDocumentation.csv", 
-                                   delim = ";", escape_double = FALSE, trim_ws = TRUE)
+GeneralDocumentation_old <-  read_delim("data input/export-2026-03-24-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK_267participants/GeneralDocumentation.csv", 
+                                        delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
 # IDS of patients
 # -> ALS patients
@@ -342,11 +344,11 @@ all_participants_IDs_final <- all_participants_IDs %>%
   select(-PGMC_mutation, -ALS_mutation)
 
 # Questionnaire info with ALSFRS scores
-Questionnaire <- read_delim("data input/export-2026-03-20-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK_267participants/QuestionnaireG.csv", 
+Questionnaire <- read_delim("data input/export-2026-05-11-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK_271participants/QuestionnaireG.csv", 
                             delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
 # ECAS info
-ECAS = read_delim("data input/export-2026-03-20-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK_267participants/Ecas.csv", 
+ECAS = read_delim("data input/export-2026-05-11-PREMODIALS-AKDTR_BRNO_CHUFR_HMCIL_HRO_KSSGCH_MRI_NIUSASSK_271participants/Ecas.csv", 
                   delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
 # spinal/bulbar 
@@ -356,7 +358,8 @@ site_onset = read_excel("data input/all_participants_IDs.xlsx")
 disease_duration =  read_excel("data input/all_participants_ID_visits.xlsx")
 
 # maybe better to take the sex, age from the list of Laura - since the excel sheet from where the dates were coming was not updated
-Sex_age_all_participants = site_onset %>%
+Sex_age_all_participants = disease_duration %>%
+  filter(Visit == "V0") %>%
   select(PatientID,sex,age) %>%
   rename(Pseudonyme = PatientID)
 

@@ -5,9 +5,9 @@
 ###############################################################################
 
 # 1. Define the interesting protein lists
-targets_cns <- c("NEFH", "NEFL", "MAPT", "GDNF", "FABP3", "TAFA5", "pTau-181",
-                 "pTau-231", "pTau-217","HTT","TARDBP")
-targets_immune <- c("TAFA5", "CX3CL1", "CEACAM5", "VEGFD", "IL7", "IL27", "IL33")
+targets_cns <- c("NEFH", "NEFL", "MAPT", "GDNF", "FABP3", "TAFA5", "pTau-181", "pTau-231", "pTau-217",
+                 "HTT","TARDBP")
+targets_immune <- c("TAFA5", "CX3CL1", "CEACAM5", "VEGFD", "IL7", "IL27", "IL33","IFNG")
 
 current_targets <- targets_cns
 
@@ -61,7 +61,7 @@ for (fluid_name in names(results_ALL)) {
   ggsave(file_name, 
          plot = p, 
          width = 10, 
-         height = 14, 
+         height = 10, 
          units = "in", 
          device = cairo_pdf)
   
@@ -115,7 +115,7 @@ for (fluid_name in names(results_ALL)) {
   ggsave(file_name, 
          plot = p, 
          width = 12, 
-         height = 12, 
+         height = 10, 
          units = "in", 
          device = cairo_pdf)
   
@@ -170,7 +170,7 @@ for (fluid_name in names(results_ALL)) {
   ggsave(file_name, 
          plot = p, 
          width = 12, 
-         height = 12, 
+         height = 10, 
          units = "in", 
          device = cairo_pdf)
   
@@ -180,7 +180,9 @@ for (fluid_name in names(results_ALL)) {
 # 5. Loop over fluids to check correlation with age
 group_modes <- list(
   "ALS" = c("ALS"),
-  "Alldiseased" = c("ALS", "CTR", "PGMC", "mimic")
+  "Alldiseased" = c("ALS", "CTR", 
+                    #"mimic",
+                    "PGMC")
 )
 
 for (mode_name in names(group_modes)) {
@@ -230,7 +232,7 @@ for (mode_name in names(group_modes)) {
     
     file_name <- paste0("plots/correlations/Age_Corr_", mode_name, "_", fluid_name, ".pdf")
     
-    ggsave(file_name, plot = p, width = 12, height = 12, device = cairo_pdf)
+    ggsave(file_name, plot = p, width = 12, height = 10, device = cairo_pdf)
     
     message("Saved: ", file_name)
   }
@@ -288,7 +290,7 @@ for (mode_name in names(group_modes)) {
     
     file_name <- paste0("plots/correlations/Sex_", mode_name, "_", fluid_name, ".pdf")
     
-    ggsave(file_name, plot = p, width = 10, height = 14, device = cairo_pdf)
+    ggsave(file_name, plot = p, width = 10, height = 10, device = cairo_pdf)
     
     message("Saved: ", file_name)
   }
