@@ -182,12 +182,15 @@ skim(ALSFRS_NULISA_V0 %>% filter(type == "ALS") %>% pull(ALSFRS_1))
 #skim(ALSFRS_NULISA_V0 %>% filter(type == "mimic") %>% pull(ALSFRS_1))
 
 ## stats for disease duration
-disease_duration_NULISA = disease_duration %>%
-  filter(ParticipantCode  %in% samples_ID_type$ParticipantCode) %>%
-  select(PatientID,type,`Disease duration`)
+disease_duration_NULISA = inner_join(fluid_data, disease_duration) %>%
+  filter(Target %in% current_targets) %>%
+  filter(type == "ALS") %>%
+  filter(Visit == "V0")  %>%
+  select(PatientID,type,`Disease duration`) %>% 
+  distinct()
 
 # stats per group
-skim(disease_duration_NULISA %>% filter(type == "ALS") %>% pull(`Disease duration`))
+skim(disease_duration_NULISA %>% pull(`Disease duration`))
 #skim(disease_duration_NULISA %>% filter(type == "mimic") %>% pull(`Disease duration`))
 
 # site of onset
