@@ -2,12 +2,11 @@
 ### Helper Functions
 ###############################################
 
-# Min-Max Scaling: brings everything to a 0-1 range
+# Z-score scaling
 scale_manual <- function(df) {
-  # We exclude 'status' from scaling
   status_col <- df$status
   numeric_df <- df %>% dplyr::select(-status)
-  scaled_df <- as.data.frame(apply(numeric_df, 2, function(x) (x - min(x)) / diff(range(x))))
+  scaled_df <- as.data.frame(apply(numeric_df, 2, function(x) (x - mean(x)) / sd(x)))
   scaled_df$status <- status_col
   return(scaled_df)
 }
@@ -550,7 +549,7 @@ find_optimal_signature <- function(results_ALL,
   
   set.seed(seed)
   
-  min_proteins = 2
+  min_proteins = 3
   
   # data preparation
   data_all <- results_ALL[[fluid]]$data_adjusted %>%
@@ -617,11 +616,10 @@ find_optimal_signature <- function(results_ALL,
   # selection of best number of proteins
   valid_idx <- min_proteins:length(ranked_proteins)
   
-  best_idx <- which.max(perf_results$auc_mean[valid_idx])
-  best_idx <- valid_idx[best_idx]
+  best_idx <- which.max(perf_results$auc_mean[valid_idx]) + (min_proteins - 1)
   best_auc <- perf_results$auc_mean[best_idx]
   best_sd  <- perf_results$auc_sd[best_idx]
-  threshold <- best_auc - (best_sd/sqrt(inner_folds))
+  threshold <- best_auc - 0.5 * (best_sd/sqrt(inner_folds))
   candidate_k <- valid_idx[perf_results$auc_mean[valid_idx] >= threshold]
   
   best_n <- min(candidate_k) 
@@ -1271,23 +1269,23 @@ for (tissue in tissues) {
 # Find the most optimal set of proteins for each ML and fluid
 
 ## -> Lasso + Serum
-proteins_serum_ALS_CTR = c("NEFL","GDNF","pTau-181","TAFA5","VEGFD","NGF","BASP1","IL6","SOD1")
+proteins_serum_ALS_CTR = c("NEFL","GDNF","pTau-181","TAFA5","VEGFD","NGF","BASP1","IL6","MSLN")
 lasso_optimal_protein_signature_serum = find_optimal_signature(results_ALL = results_ALL,
                                                          ranked_proteins = proteins_serum_ALS_CTR,
                                                          fluid = "SERUM",
                                                          output_prefix = "plots/ML/Lasso/performance_")
 
 # Elastic Net + Serum
-proteins_serum_ALS_CTR = c("NEFL","GDNF","pTau-181","NEFH","VEGFD","TAFA5",
-                           "pTau-231","NGF","FABP3","CALB2")
+proteins_serum_ALS_CTR = c("NEFL","pTau-181","NEFH","GDNF","VEGFD","TAFA5",
+                           "pTau-231","NGF","FABP3","FGF2")
 enet_optimal_protein_signature_serum = find_optimal_signature(results_ALL = results_ALL,
                                                                ranked_proteins = proteins_serum_ALS_CTR,
                                                                fluid = "SERUM",
                                                                output_prefix = "plots/ML/Elastic Net/performance_")
 
 # Elastic Net + Plasma
-proteins_plasma_ALS_CTR = c("NEFL","NEFH","pTau-181","GDNF","FABP3","IL16","TEK",
-                            "pTau-231","VSNL1","VCAM1")
+proteins_plasma_ALS_CTR = c("NEFL","NEFH","pTau-181","GDNF","FABP3","VSNL1","IL16","TEK",
+                            "pTau-231","FCN2")
 enet_optimal_protein_signature_plasma = find_optimal_signature(results_ALL = results_ALL,
                                                               ranked_proteins = proteins_plasma_ALS_CTR,
                                                               fluid = "PLASMA",
@@ -1295,8 +1293,8 @@ enet_optimal_protein_signature_plasma = find_optimal_signature(results_ALL = res
 
 
 # Elastic Net + CSF
-proteins_CSF_ALS_CTR =  c("NEFL","NEFH","CHIT1","IL6","MSLN","TNF","CHI3L1",
-                          "IL12p70","UCHL1","CCL2")
+proteins_CSF_ALS_CTR =  c("NEFL","NEFH","CHIT1","IL6","MSLN","CCL2","CHI3L1",
+                          "IL12p70","UCHL1","TNF")
 
 enet_optimal_protein_signature_CSF = find_optimal_signature(results_ALL = results_ALL,
                                                                ranked_proteins = proteins_CSF_ALS_CTR,
@@ -1322,7 +1320,7 @@ participant_code_label = lasso_PGMC_serum_signature$results %>%
   pull(ParticipantCode)
 
 # ================================================================================
-# Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 6-protein signature
+# Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 4-protein signature
 protein_data_PCA_serum = protein_data_clean %>%
   filter(Target %in% lasso_optimal_protein_signature_serum$optimal_proteins) %>%
   filter(type %in% c("PGMC","ALS","CTR"))
@@ -1352,7 +1350,7 @@ dev.off()
 
 
 # ================================================================================
-# Unsupervised visualisation (heatmap) of PGMC, ALS, CTR based on 5-protein signature
+# Unsupervised visualisation (heatmap) of PGMC, ALS, CTR based on 4-protein signature
 
 group_colors <- c(
   "CTR"  = "#6F8EB2",
@@ -1385,7 +1383,7 @@ participant_code_label = EN_PGMC_serum_signature$results %>%
 
 
 # ================================================================================
-# Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 9-protein signature
+# Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 8-protein signature
 protein_data_PCA_serum = protein_data_clean %>%
   filter(Target %in% enet_optimal_protein_signature_serum$optimal_proteins) %>%
   filter(type %in% c("PGMC","ALS","CTR"))
@@ -1495,7 +1493,7 @@ participant_code_label = EN_PGMC_CSF_signature$results %>%
   pull(ParticipantCode)
 
 # ================================================================================
-# Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 2-protein signature
+# Unsupervised visualisation (PCA) of PGMC, ALS, CTR based on 3-protein signature
 protein_data_PCA_CSF = protein_data_clean %>%
   filter(Target %in% enet_optimal_protein_signature_CSF$optimal_proteins) %>%
   filter(type %in% c("PGMC","ALS","CTR"))
@@ -1534,6 +1532,4 @@ run_heatmap_signature(results_ALL,
                       group_colors = group_colors,
                       output_prefix = "plots/ML/Elastic Net/heatmap_CSF",
                       highlight_ids = participant_code_label)
-
-
 
