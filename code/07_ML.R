@@ -2657,4 +2657,198 @@ run_heatmap_signature_CNS_IMMUNE(all_data,
                                  highlight_ids = participant_code_label,
                                  panel_mode = "IMMUNE")
 
+########################################  
+## EXTERNAL BOXPLOTS of MAXOMOD
 
+get_external_raw_values <- function(external_long, fluid, proteins, panel_mode = "both",
+                                    corr_lookup_discovery = NULL) {
+  
+  fluid_data <- external_long %>% filter(SampleMatrixType == fluid)
+  
+  raw_panel_wide <- function(panel_name, suffix) {
+    fluid_data %>%
+      filter(panel == panel_name) %>%
+      select(SampleName, Target, NPQ) %>%
+      group_by(SampleName, Target) %>%
+      summarise(NPQ = mean(NPQ, na.rm = TRUE), .groups = "drop") %>%
+      pivot_wider(names_from = Target, values_from = NPQ) %>%
+      rename_with(~ paste0(.x, suffix), .cols = -SampleName)
+  }
+  
+  if (panel_mode == "both") {
+    cns_raw    <- raw_panel_wide("CNS", "_CNS")
+    immune_raw <- raw_panel_wide("IMMUNE", "_IMMUNE")
+    wide <- full_join(cns_raw, immune_raw, by = "SampleName")
+    
+    if (!is.null(corr_lookup_discovery) && nrow(corr_lookup_discovery) > 0) {
+      for (i in seq_len(nrow(corr_lookup_discovery))) {
+        col_cns     <- paste0(corr_lookup_discovery$target_CNS[i],    "_CNS")
+        col_immune  <- paste0(corr_lookup_discovery$target_IMMUNE[i], "_IMMUNE")
+        merged_name <- corr_lookup_discovery$merged_name[i]
+        
+        if (all(c(col_cns, col_immune) %in% names(wide))) {
+          wide[[merged_name]] <- rowMeans(wide[, c(col_cns, col_immune)], na.rm = TRUE)
+        }
+      }
+    }
+  } else {
+    suffix <- paste0("_", panel_mode)
+    wide <- raw_panel_wide(panel_mode, suffix)
+  }
+  
+  available <- intersect(proteins, names(wide))
+  missing   <- setdiff(proteins, names(wide))
+  if (length(missing) > 0) {
+    message("No raw NPQ found for: ", paste(missing, collapse = ", "),
+            " in external ", fluid, " data -- check panel coverage / naming.")
+  }
+  
+  wide %>% select(SampleName, all_of(available))
+}
+
+
+## Long-format (protein, NPQ, group) data ready for ggplot
+build_boxplot_data <- function(external_long, fluid, proteins, panel_mode,
+                               corr_lookup_discovery, covariate_table) {
+  
+  raw_wide <- get_external_raw_values(external_long, fluid, proteins, panel_mode, corr_lookup_discovery)
+  value_cols <- intersect(proteins, names(raw_wide))
+  
+  raw_wide %>%
+    inner_join(covariate_table %>% select(SampleName, status), by = "SampleName") %>%
+    mutate(group = ifelse(status == 1, "ALS", "CTR")) %>%
+    pivot_longer(cols = all_of(value_cols), names_to = "protein", values_to = "NPQ")
+}
+
+
+## Draw the boxplots, one facet per protein
+plot_external_signature_boxplots <- function(external_long, fluid, proteins, panel_mode,
+                                             corr_lookup_discovery, covariate_table,
+                                             plot_path = NULL,
+                                             group_colors = c("CTR" = "#6F8EB2", "ALS" = "#B2936F"),
+                                             max_ncol = 6) {
+  
+  plot_df <- build_boxplot_data(external_long, fluid, proteins, panel_mode,
+                                corr_lookup_discovery, covariate_table)
+  
+  n_proteins <- length(unique(plot_df$protein))
+  
+  ncol_facet <- min(max_ncol, ceiling(sqrt(n_proteins)))
+  nrow_facet <- ceiling(n_proteins / ncol_facet)
+  
+  ## wilcoxon test
+  stats_table <- plot_df %>%
+    group_by(protein) %>%
+    summarise(
+      p_value = tryCatch(wilcox.test(NPQ ~ group)$p.value, error = function(e) NA_real_),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      p_adj = p.adjust(p_value, method = "BH"),
+      signif_label = case_when(
+        p_adj < 0.001 ~ "***",
+        p_adj < 0.01  ~ "**",
+        p_adj < 0.05  ~ "*",
+        TRUE          ~ "ns"
+      )
+    )
+  
+  use_ggpubr <- requireNamespace("ggpubr", quietly = TRUE)
+  
+  p <- ggplot(plot_df, aes(x = group, y = NPQ, fill = group)) +
+    geom_boxplot(outlier.shape = NA, alpha = 0.85, width = 0.6) +
+    geom_jitter(width = 0.15, size = 0.9, alpha = 0.4, color = "black") +
+    facet_wrap(~ protein, scales = "free_y", ncol = ncol_facet)
+  
+  if (use_ggpubr) {
+    p <- p + ggpubr::stat_compare_means(method = "wilcox.test", label = "p.format",
+                                        label.x.npc = "center", size = 3)
+  } else {
+    label_df <- plot_df %>%
+      group_by(protein) %>%
+      summarise(y_pos = max(NPQ, na.rm = TRUE) * 1.05, .groups = "drop") %>%
+      left_join(stats_table, by = "protein")
+    p <- p + geom_text(data = label_df,
+                       aes(x = 1.5, y = y_pos, label = paste0("p = ", signif(p_value, 2))),
+                       inherit.aes = FALSE, size = 3)
+  }
+  
+  p <- p +
+    scale_fill_manual(values = group_colors) +
+    labs(
+      title = paste0("External validation cohort (MAXOMOD) in ", fluid),
+      x = NULL, y = "NPQ (raw)"
+    ) +
+    theme_bw(base_size = 12) +
+    theme(
+      legend.position = "none",
+      strip.text = element_text(face = "bold"),
+      plot.title = element_text(face = "bold")
+    )
+  
+  if (!is.null(plot_path)) {
+    ggsave(plot_path, p, width = 3.2 * ncol_facet, height = 3.4 * nrow_facet, limitsize = FALSE)
+    write.csv(stats_table, gsub("\\.pdf$", "_stats.csv", plot_path), row.names = FALSE)
+  }
+  
+  list(plot = p, stats = stats_table)
+}
+
+
+## gt protein signature
+signature_registry <- list(
+  list(label = "Lasso_SERUM_both",   proteins = lasso_optimal_protein_signature_serum_both$optimal_proteins,   model_result = lasso_PGMC_serum_signature_both,   fluid = "SERUM",  panel_mode = "both",   out_dir = "plots/ML/Lasso"),
+  list(label = "Lasso_PLASMA_both",  proteins = lasso_optimal_protein_signature_plasma_both$optimal_proteins,  model_result = lasso_PGMC_plasma_signature_both,  fluid = "PLASMA", panel_mode = "both",   out_dir = "plots/ML/Lasso"),
+  list(label = "EN_SERUM_both",      proteins = enet_optimal_protein_signature_serum_both$optimal_proteins,    model_result = EN_PGMC_serum_signature_both,      fluid = "SERUM",  panel_mode = "both",   out_dir = "plots/ML/Elastic Net"),
+  list(label = "EN_PLASMA_both",     proteins = enet_optimal_protein_signature_plasma_both$optimal_proteins,   model_result = EN_PGMC_plasma_signature_both,     fluid = "PLASMA", panel_mode = "both",   out_dir = "plots/ML/Elastic Net"),
+  list(label = "EN_CSF_both",        proteins = enet_optimal_protein_signature_CSF_both$optimal_proteins,      model_result = EN_PGMC_CSF_signature_both,        fluid = "CSF",    panel_mode = "both",   out_dir = "plots/ML/Elastic Net"),
+  
+  list(label = "Lasso_SERUM_CNS",    proteins = lasso_optimal_protein_signature_serum_CNS$optimal_proteins,    model_result = lasso_PGMC_serum_signature_CNS,    fluid = "SERUM",  panel_mode = "CNS",    out_dir = "plots/ML/Lasso"),
+  list(label = "Lasso_PLASMA_CNS",   proteins = lasso_optimal_protein_signature_plasma_CNS$optimal_proteins,   model_result = lasso_PGMC_plasma_signature_CNS,   fluid = "PLASMA", panel_mode = "CNS",    out_dir = "plots/ML/Lasso"),
+  list(label = "EN_SERUM_CNS",       proteins = enet_optimal_protein_signature_serum_CNS$optimal_proteins,     model_result = EN_PGMC_serum_signature_CNS,       fluid = "SERUM",  panel_mode = "CNS",    out_dir = "plots/ML/Elastic Net"),
+  list(label = "EN_PLASMA_CNS",      proteins = enet_optimal_protein_signature_plasma_CNS$optimal_proteins,    model_result = EN_PGMC_plasma_signature_CNS,      fluid = "PLASMA", panel_mode = "CNS",    out_dir = "plots/ML/Elastic Net"),
+  list(label = "EN_CSF_CNS",         proteins = enet_optimal_protein_signature_CSF_CNS$optimal_proteins,       model_result = EN_PGMC_CSF_signature_CNS,         fluid = "CSF",    panel_mode = "CNS",    out_dir = "plots/ML/Elastic Net"),
+  
+  list(label = "Lasso_SERUM_IMMUNE", proteins = lasso_optimal_protein_signature_serum_IMMUNE$optimal_proteins, model_result = lasso_PGMC_serum_signature_IMMUNE, fluid = "SERUM",  panel_mode = "IMMUNE", out_dir = "plots/ML/Lasso"),
+  list(label = "Lasso_PLASMA_IMMUNE",proteins = lasso_optimal_protein_signature_plasma_IMMUNE$optimal_proteins,model_result = lasso_PGMC_plasma_signature_IMMUNE,fluid = "PLASMA", panel_mode = "IMMUNE", out_dir = "plots/ML/Lasso"),
+  list(label = "EN_SERUM_IMMUNE",    proteins = enet_optimal_protein_signature_serum_IMMUNE$optimal_proteins,  model_result = EN_PGMC_serum_signature_IMMUNE,    fluid = "SERUM",  panel_mode = "IMMUNE", out_dir = "plots/ML/Elastic Net"),
+  list(label = "EN_PLASMA_IMMUNE",   proteins = enet_optimal_protein_signature_plasma_IMMUNE$optimal_proteins, model_result = EN_PGMC_plasma_signature_IMMUNE,   fluid = "PLASMA", panel_mode = "IMMUNE", out_dir = "plots/ML/Elastic Net"),
+  list(label = "EN_CSF_IMMUNE",      proteins = enet_optimal_protein_signature_CSF_IMMUNE$optimal_proteins,    model_result = EN_PGMC_CSF_signature_IMMUNE,      fluid = "CSF",    panel_mode = "IMMUNE", out_dir = "plots/ML/Elastic Net")
+)
+
+## one pdf pr fluid
+union_proteins_by_fluid <- function(fluid_name) {
+  entries <- Filter(function(e) e$fluid == fluid_name, signature_registry)
+  unique(unlist(lapply(entries, function(e) e$proteins)))
+}
+
+## correlation of protins across panels
+get_both_corr_lookup <- function(fluid_name) {
+  entry <- Filter(function(e) e$fluid == fluid_name && e$panel_mode == "both", signature_registry)[[1]]
+  entry$model_result$corr_lookup
+}
+
+fluid_boxplot_results <- list()
+for (fl in c("SERUM", "PLASMA", "CSF")) {
+  
+  union_proteins <- union_proteins_by_fluid(fl)
+  message(fl, ": ", length(union_proteins), " unique proteins across all signatures")
+  
+  fluid_boxplot_results[[fl]] <- tryCatch({
+    plot_external_signature_boxplots(
+      external_all_data, fl,
+      proteins = union_proteins,
+      panel_mode = "both",   # superset -- correctly resolves suffixed AND merged names
+      corr_lookup_discovery = get_both_corr_lookup(fl),
+      covariate_table = external_covariate_table,
+      plot_path = paste0("plots/ML/external_boxplots_", fl, "_all_signature_proteins.pdf")
+    )
+  }, error = function(e) {
+    message("  FAILED for ", fl, ": ", conditionMessage(e))
+    NULL
+  })
+}
+
+fluid_boxplot_results$SERUM$stats
+fluid_boxplot_results$PLASMA$stats
+fluid_boxplot_results$CSF$stats
