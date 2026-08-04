@@ -30,6 +30,7 @@ library(RColorBrewer)
 library(scales)
 library(ComplexHeatmap)
 library(circlize)
+library(ggVennDiagram)
 
 ### Directories
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
