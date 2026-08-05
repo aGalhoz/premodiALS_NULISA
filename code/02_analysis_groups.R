@@ -97,7 +97,7 @@ remove_effect_covariates <- function(
     column_to_rownames(feature) %>%
     as.matrix()
   
-  # 3. Synchronize: Ensure meta and matrix columns are in the EXACT same order
+  # 3. Synchronize: Ensure meta and matrix columns are in the exact order
   meta <- meta[match(colnames(mat_wide), meta[[sample]]), ]
   
   # 4. Design Matrix: Protect the Matrix Type (Serum vs Plasma vs CSF)
@@ -449,8 +449,17 @@ get_pairwise_sig <- function(stats_list, fluid, proteins, df_top, p_cutoff = 0.1
   return(pairwise_df)
 }
 
+merge_named_vec <- function(base, override) {
+  if (is.null(override)) return(base)
+  base[names(override)] <- override
+  base
+}
+
 ## 7. Top N significantly changing proteins 
-plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15,adjusted = FALSE,LOD = FALSE) {
+plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15,adjusted = FALSE,LOD = FALSE,
+                                     label_ids = NULL, type_levels = NULL,
+                                     fill_colors = NULL, color_colors = NULL,
+                                     keep_comparisons = NULL) {
   
   # Check ANOVA results
   anova_res <- stats_list$anova
@@ -466,9 +475,13 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15,adjus
     slice(1:min(top_n, nrow(.)))
   
   top_proteins <- top_proteins_df$Target
+  
+  allowed_types <- if (!is.null(type_levels)) type_levels else
+    c("ALS","CTR","PGMC","mimic","C9orf72","SOD1","TARDBP","others")
+  
   df_top <- df %>% filter(SampleMatrixType == fluid, 
                           Target %in% top_proteins,
-                          type %in% c("ALS","CTR","PGMC","mimic","C9orf72","SOD1","TARDBP","others"))
+                          type %in% allowed_types)
   
   if(nrow(df_top) == 0) {
     warning("No data for top proteins in ", fluid, "; skipping plot.")
@@ -477,6 +490,16 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15,adjus
   
   # Pairwise p-values
   pairwise_res <- get_pairwise_sig(stats_list, fluid, top_proteins, df_top,adjusted = adjusted)
+  
+  # Optionally restrict which group comparisons get a bracket drawn, e.g.
+  # keep_comparisons = c("ALS PGMC_converted", "PGMC_nonconverted PGMC_converted", "CTR PGMC_converted")
+  if (!is.null(keep_comparisons) && !is.null(pairwise_res) && nrow(pairwise_res) > 0) {
+    pairwise_res <- pairwise_res %>%
+      filter(
+        paste(group1, group2) %in% keep_comparisons |
+          paste(group2, group1) %in% keep_comparisons
+      )
+  }
   
   # # LOD per protein (original LOD-plate)
   # lod_df <- df_top %>%
@@ -501,12 +524,42 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15,adjus
     ungroup()
   
   pgmc_mutation_proteins <- c("CTR","C9orf72", "SOD1", "TARDBP","others")
+  
+  # Default group order: mutation-subtype levels if that's what's present,
+  # otherwise the top-level CTR/PGMC/ALS ordering. A caller can override
+  # via type_levels (e.g. to insert PGMC_nonconverted / PGMC_converted).
+  if (is.null(type_levels)) {
+    type_levels <- if (all(unique(as.character(df_top$type)) %in% pgmc_mutation_proteins)) {
+      c("CTR", "C9orf72", "SOD1", "TARDBP", "others")
+    } else {
+      c("CTR", "PGMC", "ALS")
+    }
+  }
   df_top <- df_top %>%
-    mutate(type = case_when(
-      type %in% pgmc_mutation_proteins ~ factor(type, levels = c("CTR", "C9orf72", "SOD1", "TARDBP","others")),
-      #TRUE ~ factor(type, levels = c("CTR", "PGMC", "ALS", "mimic"))
-      TRUE ~ factor(type, levels = c("CTR", "PGMC", "ALS"))
-    ))
+    mutate(type = factor(type, levels = type_levels))
+  
+  # Default palettes, extendable/overridable via fill_colors / color_colors
+  default_fill <- c('CTR' = '#6F8EB2',
+                    'ALS' = '#B2936F',
+                    'PGMC' = '#ad5291',
+                    'mimic' = '#62cda9',
+                    'C9orf72' = '#55aa82',
+                    'SOD1' = '#4661b9',
+                    'TARDBP' = '#B99E46',
+                    'others' = '#888888')
+  default_color <- c('CTR' = '#6F8EB2',
+                     'ALS' = '#B2936F',
+                     'PGMC' = '#ad5291',
+                     'mimic' = '#62cda9',
+                     'C9orf72' = '#55aa82',
+                     'SOD1' = '#4661b9',
+                     'TARDBP' = '#B99E46',
+                     'FUS' = '#b96546',
+                     'other' = '#b94661',
+                     'FIG4' = '#5ba37f',
+                     'UBQLN2' = '#6546B9')
+  fill_vals  <- if (!is.null(fill_colors))  merge_named_vec(default_fill, fill_colors)  else default_fill
+  color_vals <- if (!is.null(color_colors)) merge_named_vec(default_color, color_colors) else default_color
   
   # Build plot
   if(adjusted) {
@@ -518,25 +571,8 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15,adjus
       geom_jitter(data = subset(df_top, type == "others"),
                   aes(color = subtype), position = position_dodge(width = 0.8), alpha = 0.5, size = 2) +
       facet_wrap(~Target, scales = "free_y") +
-      scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
-                                    'ALS' = '#B2936F',
-                                    'PGMC' = '#ad5291',
-                                    'mimic' = '#62cda9',
-                                    'C9orf72' = '#55aa82',
-                                    'SOD1' = '#4661b9',
-                                    'TARDBP' = '#B99E46',
-                                    'others' = '#888888')) +
-      scale_color_manual(values  = c('CTR' = '#6F8EB2',  
-                                     'ALS' = '#B2936F',
-                                     'PGMC' = '#ad5291',
-                                     'mimic' = '#62cda9',
-                                     'C9orf72' = '#55aa82',
-                                     'SOD1' = '#4661b9',
-                                     'TARDBP' = '#B99E46',
-                                     'FUS' = '#b96546',
-                                     'other' = '#b94661',
-                                     'FIG4' = '#5ba37f',
-                                     'UBQLN2' = '#6546B9')) +
+      scale_fill_manual(values  = fill_vals) +
+      scale_color_manual(values  = color_vals) +
       labs(
         x = "Group",
         y = "adjusted NPQ",
@@ -566,25 +602,8 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15,adjus
       geom_jitter(data = subset(df_top, type == "others"),
                   aes(color = subtype), position = position_dodge(width = 0.8), alpha = 0.5, size = 2) +
       facet_wrap(~Target, scales = "free_y") +
-      scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
-                                    'ALS' = '#B2936F',
-                                    'PGMC' = '#ad5291',
-                                    'mimic' = '#62cda9',
-                                    'C9orf72' = '#55aa82',
-                                    'SOD1' = '#4661b9',
-                                    'TARDBP' = '#B99E46',
-                                    'others' = '#888888')) +
-      scale_color_manual(values  = c('CTR' = '#6F8EB2',  
-                                     'ALS' = '#B2936F',
-                                     'PGMC' = '#ad5291',
-                                     'mimic' = '#62cda9',
-                                     'C9orf72' = '#55aa82',
-                                     'SOD1' = '#4661b9',
-                                     'TARDBP' = '#B99E46',
-                                     'FUS' = '#b96546',
-                                     'other' = '#b94661',
-                                     'FIG4' = '#5ba37f',
-                                     'UBQLN2' = '#6546B9')) +
+      scale_fill_manual(values  = fill_vals) +
+      scale_color_manual(values  = color_vals) +
       labs(
         x = "Group",
         y = "NPQ",
@@ -604,6 +623,19 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15,adjus
         legend.text = element_text(size = 14),
         legend.position = "none"
       ) }
+  
+  # Label the converted-PGMC individuals with their ParticipantCode
+  if (!is.null(label_ids)) {
+    df_lab <- df_top %>% filter(ParticipantCode %in% label_ids)
+    if (nrow(df_lab) > 0) {
+      p <- p + ggrepel::geom_text_repel(
+        data = df_lab,
+        aes(label = ParticipantCode),
+        size = 3, fontface = "bold", color = "black",
+        max.overlaps = Inf, seed = 42, show.legend = FALSE
+      )
+    }
+  }
   
   
   # Add LOD lines and labels
@@ -645,22 +677,66 @@ plot_top_proteins_violin <- function(df, stats_list, td, fluid, top_n = 15,adjus
 }
 
 ## 8. Single proteins
-plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjusted = FALSE, LOD = FALSE) {
+plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjusted = FALSE, LOD = FALSE,
+                                       label_ids = NULL, type_levels = NULL,
+                                       fill_colors = NULL, color_colors = NULL,
+                                       keep_comparisons = NULL) {
+  
+  allowed_types <- if (!is.null(type_levels)) type_levels else
+    c("ALS","CTR","PGMC","mimic","C9orf72","SOD1","TARDBP","others")
   
   df_prot <- df %>% filter(SampleMatrixType == fluid, 
                            Target == protein,
-                           type %in% c("ALS","CTR","PGMC","mimic","C9orf72","SOD1","TARDBP","others"))
+                           type %in% allowed_types)
+  
   anova_p <- stats_list$anova %>% filter(Target == protein) %>% pull(p)
   pairwise_res <- get_pairwise_sig(stats_list, fluid, protein, df_top = df_prot,adjusted = adjusted)
+  
+  # Optionally restrict which group comparisons get a bracket drawn, e.g.
+  # keep_comparisons = c("ALS PGMC_converted", "PGMC_nonconverted PGMC_converted", "CTR PGMC_converted")
+  if (!is.null(keep_comparisons) && nrow(pairwise_res) > 0) {
+    pairwise_res <- pairwise_res %>%
+      filter(
+        paste(group1, group2) %in% keep_comparisons |
+          paste(group2, group1) %in% keep_comparisons
+      )
+  }
   
   # Determine type order
   pgmc_mutation_proteins <- c("CTR","C9orf72", "SOD1", "TARDBP","others")
   
+  if (is.null(type_levels)) {
+    type_levels <- if (all(unique(as.character(df_prot$type)) %in% pgmc_mutation_proteins)) {
+      c("CTR", "C9orf72", "SOD1", "TARDBP", "others")
+    } else {
+      c("CTR", "PGMC", "ALS", "mimic")
+    }
+  }
   df_prot = df_prot %>%
-    mutate(type = case_when(
-      type %in% pgmc_mutation_proteins ~ factor(type, levels = c("CTR", "C9orf72", "SOD1", "TARDBP","others")),
-      TRUE ~ factor(type, levels = c("CTR", "PGMC", "ALS", "mimic"))
-    ))
+    mutate(type = factor(type, levels = type_levels))
+  
+  # Default palettes, extendable/overridable via fill_colors / color_colors
+  default_fill <- c('CTR' = '#6F8EB2',
+                    'ALS' = '#B2936F',
+                    'PGMC' = '#ad5291',
+                    'mimic' = '#62cda9',
+                    'C9orf72' = '#55aa82',
+                    'SOD1' = '#4661b9',
+                    'TARDBP' = '#B99E46',
+                    'others' = '#888888')
+  default_color <- c('CTR' = '#6F8EB2',
+                     'ALS' = '#B2936F',
+                     'PGMC' = '#ad5291',
+                     'mimic' = '#62cda9',
+                     'C9orf72' = '#55aa82',
+                     'SOD1' = '#4661b9',
+                     'TARDBP' = '#B99E46',
+                     'FUS' = '#b96546',
+                     'other' = '#b94661',
+                     'FIG4' = '#5ba37f',
+                     'UBQLN2' = '#6546B9')
+  fill_vals  <- if (!is.null(fill_colors))  merge_named_vec(default_fill, fill_colors)  else default_fill
+  color_vals <- if (!is.null(color_colors)) merge_named_vec(default_color, color_colors) else default_color
   
   # # LOD for this protein (original LOD-plate)
   # LOD_val <- get_lod(protein, fluid, td) %>% unique()
@@ -687,25 +763,8 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjust
                   aes(color = subtype), width = 0.15, alpha = 0.5, size = 2) +
       geom_jitter(data = subset(df_prot, type == "others"),
                   aes(color = subtype), position = position_dodge(width = 0.8), alpha = 0.5, size = 2) +
-      scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
-                                    'ALS' = '#B2936F',
-                                    'PGMC' = '#ad5291',
-                                    'mimic' = '#62cda9',
-                                    'C9orf72' = '#55aa82',
-                                    'SOD1' = '#4661b9',
-                                    'TARDBP' = '#B99E46',
-                                    'others' = '#888888')) +
-      scale_color_manual(values  = c('CTR' = '#6F8EB2',  
-                                     'ALS' = '#B2936F',
-                                     'PGMC' = '#ad5291',
-                                     'mimic' = '#62cda9',
-                                     'C9orf72' = '#55aa82',
-                                     'SOD1' = '#4661b9',
-                                     'TARDBP' = '#B99E46',
-                                     'FUS' = '#b96546',
-                                     'other' = '#b94661',
-                                     'FIG4' = '#5ba37f',
-                                     'UBQLN2' = '#6546B9')) +
+      scale_fill_manual(values  = fill_vals) +
+      scale_color_manual(values  = color_vals) +
       labs(
         x = "Group",
         y = "adjusted NPQ",
@@ -743,25 +802,8 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjust
                   aes(color = subtype), width = 0.15, alpha = 0.5, size = 2) +
       geom_jitter(data = subset(df_prot, type == "others"),
                   aes(color = subtype), position = position_dodge(width = 0.8), alpha = 0.5, size = 2) +
-      scale_fill_manual(values  = c('CTR' = '#6F8EB2',  
-                                    'ALS' = '#B2936F',
-                                    'PGMC' = '#ad5291',
-                                    'mimic' = '#62cda9',
-                                    'C9orf72' = '#55aa82',
-                                    'SOD1' = '#4661b9',
-                                    'TARDBP' = '#B99E46',
-                                    'others' = '#888888')) +
-      scale_color_manual(values  = c('CTR' = '#6F8EB2',  
-                                     'ALS' = '#B2936F',
-                                     'PGMC' = '#ad5291',
-                                     'mimic' = '#62cda9',
-                                     'C9orf72' = '#55aa82',
-                                     'SOD1' = '#4661b9',
-                                     'TARDBP' = '#B99E46',
-                                     'FUS' = '#b96546',
-                                     'other' = '#b94661',
-                                     'FIG4' = '#5ba37f',
-                                     'UBQLN2' = '#6546B9')) +
+      scale_fill_manual(values  = fill_vals) +
+      scale_color_manual(values  = color_vals) +
       labs(
         x = "Group",
         y = "NPQ",
@@ -795,6 +837,19 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjust
              color = "gray55",
              hjust = 0,
              size = 5)
+  
+  # Label the converted-PGMC individuals with their ParticipantCode
+  if (!is.null(label_ids)) {
+    df_lab <- df_prot %>% filter(ParticipantCode %in% label_ids)
+    if (nrow(df_lab) > 0) {
+      p <- p + ggrepel::geom_text_repel(
+        data = df_lab,
+        aes(label = ParticipantCode),
+        size = 3.5, fontface = "bold", color = "black",
+        max.overlaps = Inf, seed = 42, show.legend = FALSE
+      )
+    }
+  }
   
   # p <- p +
   #   annotation_custom(
@@ -854,13 +909,21 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjust
   return(p)
 }
 
+
 ## 9. Full pipeline for one dataset (all samples OR PGMC subset)
 run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL",
                               covariates = c("age","sex","center"),
-                              high_detectability = FALSE) {
+                              high_detectability = FALSE,
+                              label_ids = NULL, type_levels = NULL,
+                              fill_colors = NULL, color_colors = NULL,
+                              keep_comparisons = NULL) {
   
   message("Preparing dataset...")
   df <- prepare_dataset(protein_data, sample_map)
+  
+  # When labelling specific individuals, write to separate files so the
+  # standard (unlabelled) plots are never overwritten.
+  label_suffix <- if (!is.null(label_ids)) "_labelled" else ""
   
   fluids <- c("CSF", "SERUM", "PLASMA")
   results <- list()
@@ -905,17 +968,23 @@ run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL",
     )
     
     # Top 15 plot (violin)
-    p_top15 <- plot_top_proteins_violin(df, stats, td, fluid,LOD = TRUE)
+    p_top15 <- plot_top_proteins_violin(df, stats, td, fluid,LOD = TRUE,
+                                        label_ids = label_ids, type_levels = type_levels,
+                                        fill_colors = fill_colors, color_colors = color_colors,
+                                        keep_comparisons = keep_comparisons)
     
     if(!high_detectability) {
-      ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_LOD_", fluid, ".pdf"),
+      ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_LOD_", fluid, label_suffix, ".pdf"),
              p_top15, width = 15, height = 18, device = cairo_pdf, family = "DejaVu Sans")
     }
     
-    p_top15_adj <- plot_top_proteins_violin(df_fluid_adj, stats_adj, td, fluid,adjusted = TRUE)
+    p_top15_adj <- plot_top_proteins_violin(df_fluid_adj, stats_adj, td, fluid,adjusted = TRUE,
+                                            label_ids = label_ids, type_levels = type_levels,
+                                            fill_colors = fill_colors, color_colors = color_colors,
+                                            keep_comparisons = keep_comparisons)
     
     if(!high_detectability) {
-      ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_", fluid, "_adj.pdf"),
+      ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_", fluid, "_adj", label_suffix, ".pdf"),
              p_top15_adj, width = 15, height = 18, device = cairo_pdf, family = "DejaVu Sans")
     }
     
@@ -923,10 +992,13 @@ run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL",
     targets <- unique(df$Target)
     
     if(!high_detectability) {
-      cairo_pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_LOD_", fluid, "_others.pdf"),
+      cairo_pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_LOD_", fluid, "_others", label_suffix, ".pdf"),
                 width = 6, height = 5.7, family = "DejaVu Sans")
       for (t in targets) {
-        p <- plot_single_protein_violin(df, stats, td, fluid, t,LOD = TRUE)
+        p <- plot_single_protein_violin(df, stats, td, fluid, t,LOD = TRUE,
+                                        label_ids = label_ids, type_levels = type_levels,
+                                        fill_colors = fill_colors, color_colors = color_colors,
+                                        keep_comparisons = keep_comparisons)
         print(p)
       }
       dev.off()
@@ -935,10 +1007,13 @@ run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL",
     targets <- unique(df_fluid_adj$Target)
     
     if(!high_detectability) {
-      cairo_pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_", fluid, "_others_adj.pdf"),
+      cairo_pdf(paste0("plots/boxplots_", fluid,"/", prefix, "_ALLproteins_", fluid, "_others_adj", label_suffix, ".pdf"),
                 width = 6, height = 5.7, family = "DejaVu Sans")
       for (t in targets) {
-        p <- plot_single_protein_violin(df_fluid_adj, stats_adj, td, fluid, t,adjusted = TRUE)
+        p <- plot_single_protein_violin(df_fluid_adj, stats_adj, td, fluid, t,adjusted = TRUE,
+                                        label_ids = label_ids, type_levels = type_levels,
+                                        fill_colors = fill_colors, color_colors = color_colors,
+                                        keep_comparisons = keep_comparisons)
         print(p)
       }
       dev.off()
@@ -1215,6 +1290,74 @@ plot_pca_all = function(pca_res,label = FALSE) {
   p
 }
 
+# 13: boxplots with PGMC that converted
+plot_boxplots_with_labels <- function(results, td, prefix, label_ids,
+                                      type_levels = NULL,
+                                      fill_colors = NULL, color_colors = NULL,
+                                      keep_comparisons = NULL) {
+  
+  fluids <- c("CSF", "SERUM", "PLASMA")
+  
+  for (fluid in fluids) {
+    
+    res <- results[[fluid]]
+    if (is.null(res)) next
+    
+    df        <- res$data
+    stats     <- res$stats
+    df_adj    <- res$data_adjusted
+    stats_adj <- res$stats_adj
+    
+    # Top 15 (raw)
+    p_top15 <- plot_top_proteins_violin(df, stats, td, fluid, LOD = TRUE,
+                                        label_ids = label_ids, type_levels = type_levels,
+                                        fill_colors = fill_colors, color_colors = color_colors,
+                                        keep_comparisons = keep_comparisons)
+    if (!is.null(p_top15)) {
+      ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_LOD_", fluid, "_labelled.pdf"),
+             p_top15, width = 15, height = 18, device = cairo_pdf, family = "DejaVu Sans")
+    }
+    
+    # Top 15 (adjusted)
+    p_top15_adj <- plot_top_proteins_violin(df_adj, stats_adj, td, fluid, adjusted = TRUE,
+                                            label_ids = label_ids, type_levels = type_levels,
+                                            fill_colors = fill_colors, color_colors = color_colors,
+                                            keep_comparisons = keep_comparisons)
+    if (!is.null(p_top15_adj)) {
+      ggsave(paste0("plots/boxplots_", fluid, "/", prefix, "_Top15_", fluid, "_adj_labelled.pdf"),
+             p_top15_adj, width = 15, height = 18, device = cairo_pdf, family = "DejaVu Sans")
+    }
+    
+    # All proteins, raw (multi-page PDF)
+    targets <- unique(df$Target)
+    cairo_pdf(paste0("plots/boxplots_", fluid, "/", prefix, "_ALLproteins_LOD_", fluid, "_others_labelled.pdf"),
+              width = 6, height = 5.7, family = "DejaVu Sans")
+    for (t in targets) {
+      p <- plot_single_protein_violin(df, stats, td, fluid, t, LOD = TRUE,
+                                      label_ids = label_ids, type_levels = type_levels,
+                                      fill_colors = fill_colors, color_colors = color_colors,
+                                      keep_comparisons = keep_comparisons)
+      print(p)
+    }
+    dev.off()
+    
+    # All proteins, adjusted (multi-page PDF)
+    targets_adj <- unique(df_adj$Target)
+    cairo_pdf(paste0("plots/boxplots_", fluid, "/", prefix, "_ALLproteins_", fluid, "_others_adj_labelled.pdf"),
+              width = 6, height = 5.7, family = "DejaVu Sans")
+    for (t in targets_adj) {
+      p <- plot_single_protein_violin(df_adj, stats_adj, td, fluid, t, adjusted = TRUE,
+                                      label_ids = label_ids, type_levels = type_levels,
+                                      fill_colors = fill_colors, color_colors = color_colors,
+                                      keep_comparisons = keep_comparisons)
+      print(p)
+    }
+    dev.off()
+  }
+  
+  invisible(NULL)
+}
+
 ###############################################################################
 # Run pipeline
 ###############################################################################
@@ -1309,6 +1452,80 @@ results_PGMC <- run_full_pipeline(
 #   prefix       = "PGMCvsCTR",
 #   high_detectability = TRUE
 # )
+
+###############################################################################
+## 2.2 Converted PGMCs (DE102, TR119, TR122, TR112)
+converted_pgmc_ids <- c("DE102", "TR119", "TR122", "TR112")
+td_pgmc_converted <- td %>%
+  left_join(target_detectability_extra %>% select(Target, ProjectLOD)) %>%
+  select(SampleMatrixType, Target, TargetLOD_NPQ, ProjectLOD) %>%
+  distinct()
+
+# boxplots with PGMC notd 
+plot_boxplots_with_labels(
+  results   = results_ALL,
+  td        = td_pgmc_converted,
+  prefix    = "ALLsamples",
+  label_ids = converted_pgmc_ids
+)
+
+plot_boxplots_with_labels(
+  results   = results_PGMC,
+  td        = td_pgmc_converted,
+  prefix    = "PGMCvsCTR",
+  label_ids = converted_pgmc_ids
+)
+
+# comparisons of PGMC converted vs other (ALS, CTR, PGMC not converted)
+# --- Diagnostics: confirm the raw values actually look like we expect ---
+message("Unique `type` values in samples_ID_type: ",
+        paste(sort(unique(as.character(samples_ID_type$type))), collapse = ", "))
+message("Converted IDs matched in samples_ID_type$ParticipantCode: ",
+        paste(intersect(converted_pgmc_ids, trimws(as.character(samples_ID_type$ParticipantCode))),
+              collapse = ", "),
+        " (expected all 4: ", paste(converted_pgmc_ids, collapse = ", "), ")")
+
+samples_ID_type_converted <- samples_ID_type %>%
+  mutate(
+    ParticipantCode_clean = trimws(as.character(ParticipantCode)),
+    type_clean = toupper(trimws(as.character(type))),
+    type = dplyr::case_when(
+      ParticipantCode_clean %in% converted_pgmc_ids ~ "PGMC_converted",
+      type_clean == "PGMC" ~ "PGMC_nonconverted",
+      TRUE ~ type
+    )
+  ) %>%
+  select(-ParticipantCode_clean, -type_clean) %>%
+  filter(type %in% c("CTR", "ALS", "PGMC_nonconverted", "PGMC_converted"))
+
+message("Group sizes after relabelling (should NOT be 0 for PGMC_nonconverted/PGMC_converted):")
+print(table(samples_ID_type_converted$type))
+
+results_PGMC_converted <- run_full_pipeline(
+  protein_data = protein_data,
+  sample_map   = samples_ID_type_converted %>%
+    mutate(subtype = type,
+           center = dplyr::case_when(
+             grepl("TR", ParticipantCode) ~ "Turkey",
+             grepl("CH", ParticipantCode) ~ "Switzerland",
+             grepl("DE", ParticipantCode) ~ "Germany",
+             grepl("SK", ParticipantCode) ~ "Slovakia",
+             grepl("FR", ParticipantCode) ~ "France",
+             grepl("IL", ParticipantCode) ~ "Israel",
+             TRUE                 ~ NA_character_
+           )) %>%
+    left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)),
+  td           = td_pgmc_converted,
+  prefix       = "PGMCconverted",
+  type_levels  = c("CTR", "PGMC_nonconverted", "PGMC_converted", "ALS"),
+  fill_colors  = c('PGMC_nonconverted' = '#ad5291', 'PGMC_converted' = '#d62839'),
+  color_colors = c('PGMC_nonconverted' = '#ad5291', 'PGMC_converted' = '#d62839'),
+  keep_comparisons = c("ALS PGMC_converted",
+                       "PGMC_nonconverted PGMC_converted",
+                       "CTR PGMC_converted")
+)
+
+
 
 ## 3. Final boxplot compilation with raw and adjusted values for each protein 
 all_proteins <- unique(results_ALL$PLASMA$data$Target)
