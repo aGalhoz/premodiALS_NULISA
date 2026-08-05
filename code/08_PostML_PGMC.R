@@ -18,8 +18,16 @@ get_selected_pgmc <- function(model_result) {
 ## Proteins with nonzero coefficient in the locked model 
 get_selected_proteins <- function(model_result, covariate_cols = c("age", "sex_male"),
                                   normalize_panel_suffix = TRUE) {
-  proteins <- model_result$coefficients %>%
-    filter(feature != "(Intercept)", !feature %in% covariate_cols, s1 != 0) %>%
+  coef_df <- model_result$coefficients
+  
+  value_col <- setdiff(names(coef_df), "feature")
+  if (length(value_col) != 1) {
+    stop("Expected exactly one non-'feature' column in model_result$coefficients, found: ",
+         paste(value_col, collapse = ", "), ". Inspect names(model_result$coefficients) and adjust.")
+  }
+  
+  proteins <- coef_df %>%
+    filter(feature != "(Intercept)", !feature %in% covariate_cols, .data[[value_col]] != 0) %>%
     pull(feature)
   
   if (normalize_panel_suffix) {
@@ -29,32 +37,83 @@ get_selected_proteins <- function(model_result, covariate_cols = c("age", "sex_m
 }
 
 ## Venn diagram helpers
+shorten_labels <- function(names_vec) {
+  token_lists <- strsplit(names_vec, "_")
+  max_len <- max(sapply(token_lists, length))
+  token_lists <- lapply(token_lists, function(t) { length(t) <- max_len; t })
+  token_matrix <- do.call(rbind, token_lists)
+  
+  varies <- apply(token_matrix, 2, function(col) length(unique(col)) > 1)
+  if (!any(varies)) return(names_vec)  # nothing varies -- fall back to full names
+  
+  apply(token_matrix[, varies, drop = FALSE], 1, function(row) paste(na.omit(row), collapse = "_"))
+}
+
+## Compute every Venn region 
+compute_venn_regions <- function(sets) {
+  set_names <- names(sets)
+  n <- length(set_names)
+  region_list <- list()
+  
+  for (k in n:1) {   # largest combinations first (most informative) down to singles
+    combos <- combn(set_names, k, simplify = FALSE)
+    for (combo in combos) {
+      in_these <- Reduce(intersect, sets[combo])
+      other_sets <- setdiff(set_names, combo)
+      exclusive <- if (length(other_sets) > 0) {
+        setdiff(in_these, unique(unlist(sets[other_sets])))
+      } else in_these
+      region_list[[paste(combo, collapse = " & ")]] <- exclusive
+    }
+  }
+  region_list
+}
+
+save_venn_regions <- function(sets, output_path) {
+  regions <- compute_venn_regions(sets)
+  lines <- unlist(lapply(names(regions), function(nm) {
+    c(paste0("=== ", nm, " (n=", length(regions[[nm]]), ") ==="),
+      if (length(regions[[nm]]) > 0) paste(sort(regions[[nm]]), collapse = ", ") else "(none)",
+      "")
+  }))
+  writeLines(lines, output_path)
+}
+
 make_venn_patients <- function(model_names, title, plot_path = NULL) {
   sets <- lapply(model_registry[model_names], get_selected_pgmc)
-  names(sets) <- names(model_registry[model_names])
+  names(sets) <- shorten_labels(names(model_registry[model_names]))
   
   p <- ggVennDiagram(sets, label = "count") +
     scale_fill_gradient(low = "grey95", high = "#AD5291") +
     labs(title = title) +
-    theme(legend.position = "none")
+    theme(legend.position = "none",
+          plot.margin = margin(t = 1, r = 3, b = 1, l = 3, unit = "cm"))
   
-  if (!is.null(plot_path)) ggsave(plot_path, p, width = 7, height = 6)
+  if (!is.null(plot_path)) {
+    ggsave(plot_path, p, width = 9, height = 7)
+    save_venn_regions(sets, gsub("\\.pdf$", "_ids.txt", plot_path))
+  }
   p
 }
 
 make_venn_proteins <- function(model_names, title, plot_path = NULL, normalize_panel_suffix = TRUE) {
   sets <- lapply(model_registry[model_names], get_selected_proteins,
                  normalize_panel_suffix = normalize_panel_suffix)
-  names(sets) <- names(model_registry[model_names])
+  names(sets) <- shorten_labels(names(model_registry[model_names]))
   
   p <- ggVennDiagram(sets, label = "count") +
     scale_fill_gradient(low = "grey95", high = "#6F8EB2") +
     labs(title = title) +
-    theme(legend.position = "none")
+    theme(legend.position = "none",
+          plot.margin = margin(t = 1, r = 3, b = 1, l = 3, unit = "cm"))
   
-  if (!is.null(plot_path)) ggsave(plot_path, p, width = 7, height = 6)
+  if (!is.null(plot_path)) {
+    ggsave(plot_path, p, width = 9, height = 7)
+    save_venn_regions(sets, gsub("\\.pdf$", "_proteins.txt", plot_path))
+  }
   p
 }
+
 
 # selection of PGMCs
 selection_long <- purrr::imap_dfr(model_registry, function(model_result, model_name) {
@@ -101,6 +160,7 @@ make_fluid_summary_heatmap <- function(fluid_name, output_path) {
   
   row_anno_fluid <- rowAnnotation(
     Converted              = converted_vec,
+    Age_V0                 = age_v0_vec,
     MotorSigns_V0          = motor_v0_vec,
     MotorSigns_V1          = motor_v1_vec,
     MotorSigns_V2          = motor_v2_vec,
@@ -112,13 +172,14 @@ make_fluid_summary_heatmap <- function(fluid_name, output_path) {
     Urine_p75ECD_Delta     = urine_p75_delta_vec,
     col = list(
       Converted             = c(`0` = "grey95", `1` = "#B2242A"),
+      Age_V0                = age_col,
       MotorSigns_V0         = motor_col,
       MotorSigns_V1         = motor_col,
       MotorSigns_V2         = motor_col,
       TimeToPhenoconv       = phenoconv_col,
       NEFL                  = nefl_col,
       Urine_Neopterin_V0    = urine_neo_col,
-      Urine_p75ECD_VO       = urine_p75_col,
+      Urine_p75ECD_V0       = urine_p75_col,
       Urine_Neopterin_Delta = urine_neo_delta_col,
       Urine_p75ECD_Delta    = urine_p75_delta_col
     ),
@@ -212,7 +273,7 @@ for (pm in c("both", "CNS", "IMMUNE")) {
                      paste0("plots/venn/patients_EN_across_fluids_", pm, ".pdf"))
   make_venn_proteins(models, paste0("Signature overlap across fluids (Elastic Net, ", pm, ")"),
                      paste0("plots/venn/proteins_EN_across_fluids_", pm, ".pdf"),
-                     normalize_panel_suffix = FALSE)  # same panel mode -> no suffix mismatch to resolve
+                     normalize_panel_suffix = FALSE)  
 }
 
 ## Lasso across fluids is only a 2-set comparison (SERUM vs PLASMA, no CSF)
@@ -246,6 +307,9 @@ names(converted_vec) <- rownames(selection_matrix)
 motor_v0_vec <- to_row_vec(get_visit_value("TotalMotorSigns", "V0"))
 motor_v1_vec <- to_row_vec(get_visit_value("TotalMotorSigns", "V1"))
 motor_v2_vec <- to_row_vec(get_visit_value("TotalMotorSigns", "V2"))
+
+# Age at V0
+age_v0_vec <- to_row_vec(get_visit_value("age","V0"))
 
 ##  NEFL at V0
 nefl_serum_vec  <- to_row_vec(get_visit_value("Serum NEFL",  "V0"))
@@ -298,6 +362,7 @@ phenoconversion_vec[names(phenoconversion_map)] <- phenoconversion_map
 
 ## combined heatmap with results of all fluids
 binary_col     <- c(`0` = "grey95", `1` = "#AD5291")
+age_col        <- colorRamp2(range(age_v0_vec, na.rm = TRUE), c("grey95", "#7B4F9E"))
 motor_col      <- colorRamp2(range(c(motor_v0_vec, motor_v1_vec, motor_v2_vec), na.rm = TRUE), c("grey95", "#2A6DB2"))
 phenoconv_col  <- colorRamp2(range(phenoconversion_vec, na.rm = TRUE), c("#FEE8C8", "#B2242A")) 
 nefl_col       <- colorRamp2(range(c(nefl_serum_vec, nefl_plasma_vec, nefl_csf_vec), na.rm = TRUE),
@@ -312,6 +377,7 @@ urine_p75_delta_col <- colorRamp2(c(-p75_delta_range, 0, p75_delta_range), c("#2
 
 row_anno <- rowAnnotation(
   Converted              = converted_vec,
+  Age_V0                 = age_v0_vec,
   MotorSigns_V0          = motor_v0_vec,
   MotorSigns_V1          = motor_v1_vec,
   MotorSigns_V2          = motor_v2_vec,
@@ -325,6 +391,7 @@ row_anno <- rowAnnotation(
   Urine_p75ECD_Delta     = urine_p75_delta_vec,
   col = list(
     Converted             = c(`0` = "grey95", `1` = "#B2242A"),
+    Age_V0                = age_col,
     MotorSigns_V0         = motor_col,
     MotorSigns_V1         = motor_col,
     MotorSigns_V2         = motor_col,
@@ -333,7 +400,7 @@ row_anno <- rowAnnotation(
     NEFL_Plasma           = nefl_col,
     NEFL_CSF              = nefl_col,
     Urine_Neopterin_V0    = urine_neo_col,
-    Urine_p75ECD_VO       = urine_p75_col,
+    Urine_p75ECD_V0       = urine_p75_col,
     Urine_Neopterin_Delta = urine_neo_delta_col,
     Urine_p75ECD_Delta    = urine_p75_delta_col
   ),
