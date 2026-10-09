@@ -97,7 +97,7 @@ remove_effect_covariates <- function(
     column_to_rownames(feature) %>%
     as.matrix()
   
-  # 3. Synchronize: Ensure meta and matrix columns are in the exact order
+  # 3. Synchronize: Ensure meta and matrix columns are in the EXACT same order
   meta <- meta[match(colnames(mat_wide), meta[[sample]]), ]
   
   # 4. Design Matrix: Protect the Matrix Type (Serum vs Plasma vs CSF)
@@ -138,8 +138,8 @@ format_p <- function(p, digits = 3) {
 }
 
 run_stats_for_fluid_old <- function(df, fluid, value_col = "NPQ", 
-                                    adjust = FALSE,
-                                    covariates = c("age", "sex","center")) {
+                                adjust = FALSE,
+                                covariates = c("age", "sex","center")) {
   
   df_f <- df %>%
     filter(SampleMatrixType == fluid) %>%
@@ -909,6 +909,149 @@ plot_single_protein_violin <- function(df, stats_list, td, fluid, protein,adjust
   return(p)
 }
 
+## 8.1 Single proteins as rain cloud plots
+plot_single_protein_raincloud <- function(df, stats_list, td, fluid, protein,
+                                          adjusted = FALSE,
+                                          label_ids = NULL, type_levels = NULL,
+                                          fill_colors = NULL, color_colors = NULL,
+                                          keep_comparisons = NULL,
+                                          show_pvalues = TRUE,
+                                          violin_width = 0.42,
+                                          dot_offset = 0.03,
+                                          dot_spread = 0.20) {
+  
+  allowed_types <- if (!is.null(type_levels)) type_levels else
+    c("ALS", "CTR", "PGMC", "mimic", "C9orf72", "SOD1", "TARDBP", "others")
+  
+  df_prot <- df %>% filter(SampleMatrixType == fluid,
+                           Target == protein,
+                           type %in% allowed_types)
+  
+  pairwise_res <- get_pairwise_sig(stats_list, fluid, protein,
+                                   df_top = df_prot, adjusted = adjusted)
+  
+  if (!is.null(keep_comparisons) && nrow(pairwise_res) > 0) {
+    pairwise_res <- pairwise_res %>%
+      filter(
+        paste(group1, group2) %in% keep_comparisons |
+          paste(group2, group1) %in% keep_comparisons
+      )
+  }
+  
+  # Group order 
+  pgmc_mutation_proteins <- c("CTR", "C9orf72", "SOD1", "TARDBP", "others")
+  if (is.null(type_levels)) {
+    type_levels <- if (all(unique(as.character(df_prot$type)) %in% pgmc_mutation_proteins)) {
+      c("CTR", "C9orf72", "SOD1", "TARDBP", "others")
+    } else {
+      c("CTR", "PGMC", "ALS", "mimic")
+    }
+  }
+  # drop groups that have no data in this panel 
+  type_levels <- type_levels[type_levels %in% unique(as.character(df_prot$type))]
+  df_prot <- df_prot %>% mutate(type = factor(type, levels = type_levels))
+  
+  # Palettes
+  default_fill <- c('CTR' = '#6F8EB2', 'ALS' = '#B2936F', 'PGMC' = '#ad5291',
+                    'mimic' = '#62cda9', 'C9orf72' = '#55aa82', 'SOD1' = '#4661b9',
+                    'TARDBP' = '#B99E46', 'others' = '#888888')
+  default_color <- c('CTR' = '#6F8EB2', 'ALS' = '#B2936F', 'PGMC' = '#ad5291',
+                     'mimic' = '#62cda9', 'C9orf72' = '#55aa82', 'SOD1' = '#4661b9',
+                     'TARDBP' = '#B99E46', 'FUS' = '#b96546', 'other' = '#b94661',
+                     'FIG4' = '#5ba37f', 'UBQLN2' = '#6546B9')
+  fill_vals  <- if (!is.null(fill_colors))  merge_named_vec(default_fill, fill_colors)  else default_fill
+  color_vals <- if (!is.null(color_colors)) merge_named_vec(default_color, color_colors) else default_color
+  
+  yvar    <- if (adjusted) "NPQ_adj" else "NPQ"
+  ylab    <- if (adjusted) "adjusted NPQ" else "NPQ"
+  
+  df_prot <- df_prot %>%
+    filter(!is.na(.data[[yvar]])) %>%
+    mutate(y = .data[[yvar]], xnum = as.numeric(type))
+  max_val <- max(df_prot$y, na.rm = TRUE)
+  lev     <- levels(df_prot$type)
+  
+  # half violin
+  violin_df <- do.call(rbind, lapply(split(df_prot, df_prot$type), function(d) {
+    if (nrow(d) < 2 || length(unique(d$y)) < 2) return(NULL)
+    dens <- stats::density(d$y, n = 256)          
+    w    <- dens$y / max(dens$y) * violin_width   
+    x0   <- d$xnum[1] - 0.02
+    data.frame(
+      type = as.character(d$type[1]),
+      x    = c(rep(x0, length(dens$x)), rev(x0 - w)),
+      y    = c(dens$x, rev(dens$x))
+    )
+  }))
+  
+  # dots
+  set.seed(42)
+  df_prot <- df_prot %>%
+    mutate(xdot = xnum + dot_offset + runif(n(), 0, dot_spread))
+  
+  p <- ggplot()
+  if (!is.null(violin_df) && nrow(violin_df) > 0) {
+    p <- p + geom_polygon(
+      data = violin_df,
+      aes(x = x, y = y, fill = type, group = type),
+      alpha = 0.5, color = NA
+    )
+  }
+  p <- p +
+    geom_point(
+      data = df_prot,
+      aes(x = xdot, y = y, color = subtype),
+      alpha = 0.6, size = 2
+    ) +
+    scale_fill_manual(values = fill_vals) +
+    scale_color_manual(values = color_vals) +
+    scale_x_continuous(breaks = seq_along(lev), labels = lev,
+                       limits = c(0.4, length(lev) + 0.6)) +
+    labs(x = "Group", y = ylab, title = protein) +
+    theme_classic() +
+    theme(
+      panel.background = element_rect(fill = "white", color = NA),
+      plot.background  = element_rect(fill = "white", color = NA),
+      panel.border     = element_blank(),
+      axis.title.x     = element_blank(),
+      text         = element_text(size = 15),
+      axis.title   = element_text(size = 18),
+      axis.text    = element_text(size = 14),
+      plot.title   = element_text(size = 18, hjust = 0.5, face = "bold"),
+      legend.position = "none"
+    )
+  
+  if (!is.null(label_ids)) {
+    df_lab <- df_prot %>% filter(ParticipantCode %in% label_ids)
+    if (nrow(df_lab) > 0) {
+      p <- p + ggrepel::geom_text_repel(
+        data = df_lab, aes(x = xdot, y = y, label = ParticipantCode),
+        size = 3.5, fontface = "bold", color = "black",
+        max.overlaps = Inf, seed = 42, show.legend = FALSE
+      )
+    }
+  }
+  
+  # Pairwise p-value brackets 
+  if (show_pvalues && nrow(pairwise_res) > 0) {
+    pairwise_res <- pairwise_res %>%
+      mutate(xmin = match(group1, lev), xmax = match(group2, lev)) %>%
+      filter(!is.na(xmin), !is.na(xmax))
+    if (nrow(pairwise_res) > 0) {
+      p <- p + stat_pvalue_manual(
+        pairwise_res,
+        label = "p_label",
+        xmin = "xmin", xmax = "xmax",
+        bracket.nudge.y = 0.05 * max_val,
+        size = 6,
+        y.position = "y.position"
+      )
+    }
+  }
+  
+  p + scale_y_continuous(expand = expansion(mult = c(0.01, 0.05)))
+}
+
 
 ## 9. Full pipeline for one dataset (all samples OR PGMC subset)
 run_full_pipeline <- function(protein_data, sample_map, td, prefix = "ALL",
@@ -1368,45 +1511,18 @@ results_ALL <- run_full_pipeline(
   sample_map      = samples_ID_type %>% 
     mutate(subtype = type,
            center = dplyr::case_when(
-           grepl("TR", ParticipantCode) ~ "Turkey",
-           grepl("CH", ParticipantCode) ~ "Switzerland",
-           grepl("DE", ParticipantCode) ~ "Germany",
-           grepl("SK", ParticipantCode) ~ "Slovakia",
-           grepl("FR", ParticipantCode) ~ "France",
-           grepl("IL", ParticipantCode) ~ "Israel",
-           TRUE                 ~ NA_character_
-         )) %>%
+             grepl("TR", ParticipantCode) ~ "Turkey",
+             grepl("CH", ParticipantCode) ~ "Switzerland",
+             grepl("DE", ParticipantCode) ~ "Germany",
+             grepl("SK", ParticipantCode) ~ "Slovakia",
+             grepl("FR", ParticipantCode) ~ "France",
+             grepl("IL", ParticipantCode) ~ "Israel",
+             TRUE                 ~ NA_character_
+           )) %>%
     left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)),
   td              = td %>% left_join(target_detectability_extra %>% select(Target,ProjectLOD)) %>%
     select(SampleMatrixType,Target,TargetLOD_NPQ,ProjectLOD) %>% distinct(),
-  prefix          = "ALLsamples"
-)
-
-## 1.1 All samples (high detectable - deprecated)
-# protein_data_high_detectability = protein_data %>%
-#   left_join(detectability_summary %>% 
-#               select(SampleMatrixType,Target,detectability)) %>%
-#   filter(detectability == "high")
-#   
-# results_ALL_high_detectability <- run_full_pipeline(
-#   protein_data    = protein_data_high_detectability,
-#   sample_map      = samples_ID_type %>% 
-#     mutate(subtype = type,
-#            center = dplyr::case_when(
-#              grepl("TR", ParticipantCode) ~ "Turkey",
-#              grepl("CH", ParticipantCode) ~ "Switzerland",
-#              grepl("DE", ParticipantCode) ~ "Germany",
-#              grepl("SK", ParticipantCode) ~ "Slovakia",
-#              grepl("FR", ParticipantCode) ~ "France",
-#              grepl("IL", ParticipantCode) ~ "Israel",
-#              TRUE                 ~ NA_character_
-#            )) %>%
-#     left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)),
-#   td              = td %>% left_join(target_detectability_extra %>% select(Target,ProjectLOD)) %>%
-#     select(SampleMatrixType,Target,TargetLOD_NPQ,ProjectLOD) %>% distinct(),
-#   prefix          = "ALLsamples",
-#   high_detectability = TRUE
-# )
+  prefix          = "ALLsamples")
 
 ## 2. PGMC mutation analysis 
 results_PGMC <- run_full_pipeline(
@@ -1429,29 +1545,6 @@ results_PGMC <- run_full_pipeline(
     select(SampleMatrixType,Target,TargetLOD_NPQ,ProjectLOD) %>% distinct(),
   prefix       = "PGMCvsCTR"
 )
-
-## 2.1 All samples (high detectable - deprecated)
-# results_PGMC_high_detectability <- run_full_pipeline(
-#   protein_data = protein_data_high_detectability,
-#   sample_map   = samples_PGMC_CTR_ID_type %>% 
-#     mutate(subtype = type,
-#            center = dplyr::case_when(
-#              grepl("TR", ParticipantCode) ~ "Turkey",
-#              grepl("CH", ParticipantCode) ~ "Switzerland",
-#              grepl("DE", ParticipantCode) ~ "Germany",
-#              grepl("SK", ParticipantCode) ~ "Slovakia",
-#              grepl("FR", ParticipantCode) ~ "France",
-#              grepl("IL", ParticipantCode) ~ "Israel",
-#              TRUE                 ~ NA_character_
-#            )) %>%
-#     #filter(!type %in% c("FUS","UBQLN2","FIG4","other")),
-#     mutate(type = ifelse(type %in% c("FUS","UBQLN2","FIG4","other"),"others",type)) %>%
-#     left_join(Sex_age_all_participants %>% dplyr::rename(PatientID = Pseudonyme)),
-#   td           = td %>% left_join(target_detectability_extra %>% select(Target,ProjectLOD)) %>%
-#     select(SampleMatrixType,Target,TargetLOD_NPQ,ProjectLOD) %>% distinct(),
-#   prefix       = "PGMCvsCTR",
-#   high_detectability = TRUE
-# )
 
 ###############################################################################
 ## 2.2 Converted PGMCs (DE102, TR119, TR122, TR112)
@@ -1477,29 +1570,15 @@ plot_boxplots_with_labels(
 )
 
 # comparisons of PGMC converted vs other (ALS, CTR, PGMC not converted)
-# --- Diagnostics: confirm the raw values actually look like we expect ---
-message("Unique `type` values in samples_ID_type: ",
-        paste(sort(unique(as.character(samples_ID_type$type))), collapse = ", "))
-message("Converted IDs matched in samples_ID_type$ParticipantCode: ",
-        paste(intersect(converted_pgmc_ids, trimws(as.character(samples_ID_type$ParticipantCode))),
-              collapse = ", "),
-        " (expected all 4: ", paste(converted_pgmc_ids, collapse = ", "), ")")
-
 samples_ID_type_converted <- samples_ID_type %>%
   mutate(
-    ParticipantCode_clean = trimws(as.character(ParticipantCode)),
-    type_clean = toupper(trimws(as.character(type))),
     type = dplyr::case_when(
-      ParticipantCode_clean %in% converted_pgmc_ids ~ "PGMC_converted",
-      type_clean == "PGMC" ~ "PGMC_nonconverted",
+      ParticipantCode %in% converted_pgmc_ids ~ "PGMC_converted",
+      type == "PGMC" ~ "PGMC_nonconverted",
       TRUE ~ type
     )
   ) %>%
-  select(-ParticipantCode_clean, -type_clean) %>%
   filter(type %in% c("CTR", "ALS", "PGMC_nonconverted", "PGMC_converted"))
-
-message("Group sizes after relabelling (should NOT be 0 for PGMC_nonconverted/PGMC_converted):")
-print(table(samples_ID_type_converted$type))
 
 results_PGMC_converted <- run_full_pipeline(
   protein_data = protein_data,
@@ -1524,7 +1603,6 @@ results_PGMC_converted <- run_full_pipeline(
                        "PGMC_nonconverted PGMC_converted",
                        "CTR PGMC_converted")
 )
-
 
 
 ## 3. Final boxplot compilation with raw and adjusted values for each protein 
@@ -1625,6 +1703,68 @@ for(protein_name in all_proteins) {
 }
 dev.off()
 
+# 3.3: raw values - raincloud plots
+cairo_pdf("plots/combined_raincloud_all_fluids_groups_raw.pdf",
+          width = 14, height = 12, family = "DejaVu Sans")
+
+for (protein_name in all_proteins) {
+  
+  plot_list <- lapply(seq_len(nrow(plot_config)), function(i) {
+    row_type <- plot_config$row[i]
+    fluid    <- plot_config$fluid[i]
+    
+    if (row_type == "all_samples") {
+      df_plot    <- results_ALL[[fluid]]$data
+      stats_plot <- results_ALL[[fluid]]$stats
+    } else {
+      df_plot    <- results_PGMC[[fluid]]$data
+      stats_plot <- results_PGMC[[fluid]]$stats
+    }
+    
+    plot_single_protein_raincloud(
+      df_plot, stats_plot,
+      td = td_joined, fluid, protein_name
+    ) + ggtitle(fluid)
+  })
+  
+  grid.arrange(
+    grobs = plot_list, nrow = 2, ncol = 3,
+    top = textGrob(protein_name, gp = gpar(fontface = "bold", fontsize = 20))
+  )
+}
+dev.off()
+
+# 3.4: adjusted values - raincloud plots
+cairo_pdf("plots/combined_raincloud_all_fluids_groups_adjusted.pdf",
+          width = 14, height = 12, family = "DejaVu Sans")
+
+for (protein_name in all_proteins) {
+  
+  plot_list <- lapply(seq_len(nrow(plot_config)), function(i) {
+    row_type <- plot_config$row[i]
+    fluid    <- plot_config$fluid[i]
+    
+    if (row_type == "all_samples") {
+      df_plot    <- results_ALL[[fluid]]$data_adjusted
+      stats_plot <- results_ALL[[fluid]]$stats_adj
+    } else {
+      df_plot    <- results_PGMC[[fluid]]$data_adjusted
+      stats_plot <- results_PGMC[[fluid]]$stats_adj
+    }
+    
+    plot_single_protein_raincloud(
+      df_plot, stats_plot,
+      td = td_joined, fluid, protein_name, adjusted = TRUE
+    ) + ggtitle(fluid)
+  })
+  
+  grid.arrange(
+    grobs = plot_list, nrow = 2, ncol = 3,
+    top = textGrob(protein_name, gp = gpar(fontface = "bold", fontsize = 20))
+  )
+}
+dev.off()
+
 ## 4. PCA by fluid and subtypes 
 protein_data_PCA <- protein_data_IDs %>%
   left_join(samples_PGMC_CTR_ID_type %>% rename(subtype = type,
@@ -1677,7 +1817,7 @@ plots_subtype[[which(names(pca_results_subtype)=="CSF")]]
 dev.off()
 
 plots_subtype_label <- lapply(names(pca_results_subtype), 
-                        function(m) plot_pca(pca_results_subtype[[m]], m,label = TRUE))
+                              function(m) plot_pca(pca_results_subtype[[m]], m,label = TRUE))
 
 pdf("plots/PCA_plots/PCA_SERUM_subtype_label.pdf", width = 8, height = 6.5) 
 plots_subtype_label[[which(names(pca_results_subtype)=="SERUM")]] 
@@ -1690,7 +1830,7 @@ plots_subtype_label[[which(names(pca_results_subtype)=="CSF")]]
 dev.off()
 
 plots_center <- lapply(names(pca_results_subtype), 
-                        function(m) plot_pca(pca_results_subtype[[m]], m,type_center = "center"))
+                       function(m) plot_pca(pca_results_subtype[[m]], m,type_center = "center"))
 
 pdf("plots/PCA_plots/PCA_SERUM_center.pdf", width = 8, height = 6.5) 
 plots_center[[which(names(pca_results_subtype)=="SERUM")]] 
@@ -1703,8 +1843,8 @@ plots_center[[which(names(pca_results_subtype)=="CSF")]]
 dev.off()
 
 plots_center_label <- lapply(names(pca_results_subtype), 
-                       function(m) plot_pca(pca_results_subtype[[m]], m,
-                                            type_center = "center",label = TRUE))
+                             function(m) plot_pca(pca_results_subtype[[m]], m,
+                                                  type_center = "center",label = TRUE))
 
 pdf("plots/PCA_plots/PCA_SERUM_center_label.pdf", width = 8, height = 6.5) 
 plots_center_label[[which(names(pca_results_subtype)=="SERUM")]] 
@@ -1721,7 +1861,7 @@ pca_results_subtype_adj <- lapply(matrices, function(m)
 names(pca_results_subtype_adj) <- matrices
 
 plots_subtype_adj <- lapply(names(pca_results_subtype_adj), 
-                        function(m) plot_pca(pca_results_subtype_adj[[m]], m))
+                            function(m) plot_pca(pca_results_subtype_adj[[m]], m))
 
 pdf("plots/PCA_plots/PCA_SERUM_subtype_adjusted.pdf", width = 8, height = 6.5) 
 plots_subtype_adj[[which(names(pca_results_subtype_adj)=="SERUM")]] 
@@ -1734,8 +1874,8 @@ plots_subtype_adj[[which(names(pca_results_subtype_adj)=="CSF")]]
 dev.off()
 
 plots_subtype_adj_label <- lapply(names(pca_results_subtype_adj), 
-                            function(m) plot_pca(pca_results_subtype_adj[[m]], m,
-                                                 label = TRUE))
+                                  function(m) plot_pca(pca_results_subtype_adj[[m]], m,
+                                                       label = TRUE))
 
 pdf("plots/PCA_plots/PCA_SERUM_subtype_adjusted_label.pdf", width = 8, height = 6.5) 
 plots_subtype_adj_label[[which(names(pca_results_subtype_adj)=="SERUM")]] 
@@ -1748,7 +1888,7 @@ plots_subtype_adj_label[[which(names(pca_results_subtype_adj)=="CSF")]]
 dev.off()
 
 plots_center_adj <- lapply(names(pca_results_subtype_adj), 
-                       function(m) plot_pca(pca_results_subtype_adj[[m]], m,type_center = "center"))
+                           function(m) plot_pca(pca_results_subtype_adj[[m]], m,type_center = "center"))
 
 pdf("plots/PCA_plots/PCA_SERUM_center_adjusted.pdf", width = 8, height = 6.5) 
 plots_center_adj[[which(names(pca_results_subtype_adj)=="SERUM")]] 
@@ -1761,8 +1901,8 @@ plots_center_adj[[which(names(pca_results_subtype_adj)=="CSF")]]
 dev.off()
 
 plots_center_adj_label <- lapply(names(pca_results_subtype_adj), 
-                           function(m) plot_pca(pca_results_subtype_adj[[m]], m,
-                                                type_center = "center",label = TRUE))
+                                 function(m) plot_pca(pca_results_subtype_adj[[m]], m,
+                                                      type_center = "center",label = TRUE))
 
 pdf("plots/PCA_plots/PCA_SERUM_center_adjusted_label.pdf", width = 8, height = 6.5) 
 plots_center_adj_label[[which(names(pca_results_subtype_adj)=="SERUM")]] 
