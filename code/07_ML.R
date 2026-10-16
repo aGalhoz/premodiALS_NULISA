@@ -1085,14 +1085,48 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
              label = ifelse(type == "PGMC" & ALS_risk_score > 0,
                             ParticipantCode, NA))
     
+    # Disease duration of the PGMC (V0 if available, otherwise the first entry)
+    join_key_cands <- intersect(c("PatientID", "ParticipantCode"), names(disease_duration))
+    dur_lookup <- disease_duration %>%
+      filter(type == "PGMC", !is.na(`Disease duration`)) %>%
+      arrange(Visit != "V0") %>%
+      select(any_of(c("PatientID", "ParticipantCode")), `Disease duration`)
+    join_key <- intersect(join_key_cands, names(plot_data))[1]
+    dur_lookup <- dur_lookup %>%
+      distinct(across(all_of(join_key)), .keep_all = TRUE) %>%
+      select(all_of(join_key), `Disease duration`)
+    plot_data <- plot_data %>%
+      left_join(dur_lookup, by = join_key)
+    
     group_colors <- c("CTR"="#6F8EB2","ALS"="#B2936F","PGMC"="#ad5291")
     
-    pdf(paste0(output_prefix, "ALS_risk_score_",fluid,".pdf"), height = 5, width = 7)
+    pgmc_dur   <- filter(plot_data, type == "PGMC" & !is.na(`Disease duration`))
+    pgmc_nodur <- filter(plot_data, type == "PGMC" & is.na(`Disease duration`))
+    
+    pdf(paste0(output_prefix, "ALS_risk_score_",fluid,".pdf"), height = 5, width = 8)
     
     print(
       ggplot(plot_data, aes(x = ALS_risk_score, y = type, fill = type)) +
         geom_violin(trim = FALSE, alpha = 0.4) +
-        geom_jitter(aes(color = type), height = 0.08, size = 1.2) +
+        # CTR and ALS: fixed colour and size, as before
+        geom_point(data = filter(plot_data, type == "CTR"),
+                   color = group_colors[["CTR"]], size = 1.2,
+                   position = position_jitter(height = 0.08, width = 0, seed = 1)) +
+        geom_point(data = filter(plot_data, type == "ALS"),
+                   color = group_colors[["ALS"]], size = 1.2,
+                   position = position_jitter(height = 0.08, width = 0, seed = 2)) +
+        # PGMC without a disease duration: unchanged
+        geom_point(data = pgmc_nodur, color = group_colors[["PGMC"]], size = 1,
+                   alpha = 0.45,
+                   position = position_jitter(height = 0.08, width = 0, seed = 3)) +
+        # PGMC with disease duration: shorter duration = darker and bigger
+        geom_point(data = pgmc_dur,
+                   aes(color = `Disease duration`, size = `Disease duration`),
+                   position = position_jitter(height = 0.08, width = 0, seed = 3)) +
+        geom_point(data = pgmc_dur,
+                   aes(size = `Disease duration`), shape = 1, stroke = 1,
+                   color = "black",
+                   position = position_jitter(height = 0.08, width = 0, seed = 3)) +
         ggrepel::geom_text_repel(
           data = plot_data %>% filter(!is.na(label)),
           aes(label = label),
@@ -1101,8 +1135,13 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
           max.overlaps = 50,
           direction = "y") +
         geom_vline(xintercept = 0, linetype = "dashed") +
-        scale_fill_manual(values = group_colors) +
-        scale_color_manual(values = group_colors) +
+        scale_fill_manual(values = group_colors, guide = "none") +
+        # low duration (= more relevant) -> dark colour and large point
+        scale_color_gradient(low = "#3B0A2E", high = "#D9A6C8",
+                             name = "PGMC disease\nduration (months)") +
+        scale_size_continuous(range = c(3.5, 1.8),
+                              name = "PGMC disease\nduration (months)") +
+        guides(color = guide_legend(), size = guide_legend()) +
         theme_classic(base_size = 12) +
         theme(
           axis.line = element_line(size = 0.4),
@@ -1110,7 +1149,7 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
           axis.text = element_text(color = "black"),
           axis.title = element_text(size = 12),
           plot.title = element_text(size = 13, face = "bold"),
-          legend.position = "none"
+          legend.position = "right"
         ) +
         labs(
           x = "ALS Risk Score",
@@ -1163,7 +1202,7 @@ run_heatmap_signature_CNS_IMMUNE <- function(
                 select(ParticipantCode, SiteDiseaseOnset),
               by = "ParticipantCode") %>%
     left_join(disease_duration %>%
-                filter(type == "ALS", Visit == "V0") %>%
+                filter(Visit == "V0") %>%
                 select(PatientID, `Disease duration`) %>%
                 distinct(),
               by = "PatientID") %>%
@@ -1748,7 +1787,7 @@ external_validation_enet_serum_both <- validate_external(
 )
 
 
-participant_code_label = EN_PGMC_serum_signature_both_both$results %>%
+participant_code_label = EN_PGMC_serum_signature_both$results %>%
   left_join(protein_data_IDs %>% select(SampleName,ParticipantCode,type)) %>%
   distinct() %>%
   filter(type == "PGMC" & ALS_risk_score > 0) %>%

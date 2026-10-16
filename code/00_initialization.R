@@ -370,3 +370,5 @@ all_participants_IDs_final <- merge(all_participants_IDs_final,
 
 writexl::write_xlsx(all_participants_IDs_final,"results/all_participants_IDs_final.xlsx")
 
+disease_duration =read_excel("data input/all_participants_ID_visits_heatmap.xlsx")
+
