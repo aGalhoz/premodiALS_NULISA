@@ -1085,7 +1085,7 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
              label = ifelse(type == "PGMC" & ALS_risk_score > 0,
                             ParticipantCode, NA))
     
-    # Disease duration of the PGMC (V0 if available, otherwise the first entry)
+    # Disease duration of the PGMC 
     join_key_cands <- intersect(c("PatientID", "ParticipantCode"), names(disease_duration))
     dur_lookup <- disease_duration %>%
       filter(type == "PGMC", !is.na(`Disease duration`)) %>%
@@ -1096,12 +1096,21 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
       distinct(across(all_of(join_key)), .keep_all = TRUE) %>%
       select(all_of(join_key), `Disease duration`)
     plot_data <- plot_data %>%
-      left_join(dur_lookup, by = join_key)
+      left_join(dur_lookup, by = join_key) %>%
+      # use the absolute value = months from baseline until conversion
+      mutate(`Months to conversion` = abs(`Disease duration`),
+             label = ifelse(!is.na(`Months to conversion`),
+                            paste0(ParticipantCode, " (", round(`Months to conversion`, 1), " mo)"),
+                            label))
     
     group_colors <- c("CTR"="#6F8EB2","ALS"="#B2936F","PGMC"="#ad5291")
     
-    pgmc_dur   <- filter(plot_data, type == "PGMC" & !is.na(`Disease duration`))
-    pgmc_nodur <- filter(plot_data, type == "PGMC" & is.na(`Disease duration`))
+    pgmc_dur   <- filter(plot_data, type == "PGMC" & !is.na(`Months to conversion`))
+    pgmc_nodur <- filter(plot_data, type == "PGMC" & is.na(`Months to conversion`))
+    
+    # the exact disease duration (months)
+    dur_breaks <- sort(unique(round(pgmc_dur$`Months to conversion`, 1)))
+    if (length(dur_breaks) == 0) dur_breaks <- ggplot2::waiver()
     
     pdf(paste0(output_prefix, "ALS_risk_score_",fluid,".pdf"), height = 5, width = 8)
     
@@ -1121,10 +1130,10 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
                    position = position_jitter(height = 0.08, width = 0, seed = 3)) +
         # PGMC with disease duration: shorter duration = darker and bigger
         geom_point(data = pgmc_dur,
-                   aes(color = `Disease duration`, size = `Disease duration`),
+                   aes(color = `Months to conversion`, size = `Months to conversion`),
                    position = position_jitter(height = 0.08, width = 0, seed = 3)) +
         geom_point(data = pgmc_dur,
-                   aes(size = `Disease duration`), shape = 1, stroke = 1,
+                   aes(size = `Months to conversion`), shape = 1, stroke = 1,
                    color = "black",
                    position = position_jitter(height = 0.08, width = 0, seed = 3)) +
         ggrepel::geom_text_repel(
@@ -1133,14 +1142,16 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
           size = 3,
           segment.color = "black",
           max.overlaps = 50,
-          direction = "y") +
+          direction = "y",
+          box.padding = 0.6,
+          point.padding = 0.5) +
         geom_vline(xintercept = 0, linetype = "dashed") +
         scale_fill_manual(values = group_colors, guide = "none") +
         # low duration (= more relevant) -> dark colour and large point
-        scale_color_gradient(low = "#3B0A2E", high = "#D9A6C8",
-                             name = "PGMC disease\nduration (months)") +
-        scale_size_continuous(range = c(3.5, 1.8),
-                              name = "PGMC disease\nduration (months)") +
+        scale_color_gradient(low = "#3B0A2E", high = "#D9A6C8", breaks = dur_breaks,
+                             name = "PGMC months from\nbaseline to conversion") +
+        scale_size_continuous(range = c(3.5, 1.8), breaks = dur_breaks,
+                              name = "PGMC months from\nbaseline to conversion") +
         guides(color = guide_legend(), size = guide_legend()) +
         theme_classic(base_size = 12) +
         theme(
