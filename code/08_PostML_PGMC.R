@@ -152,69 +152,6 @@ to_row_vec <- function(lookup) {
   setNames(lookup[rownames(selection_matrix)], rownames(selection_matrix))
 }
 
-## heatmap by fluid
-make_fluid_summary_heatmap <- function(fluid_name, output_path) {
-  
-  cols_this_fluid <- colnames(selection_matrix)[column_split_fluid == fluid_name]
-  mat_fluid <- selection_matrix[, cols_this_fluid, drop = FALSE]
-  
-  row_anno_fluid <- rowAnnotation(
-    Converted              = converted_vec,
-    Age_V0                 = age_v0_vec,
-    MotorSigns_V0          = motor_v0_vec,
-    MotorSigns_V1          = motor_v1_vec,
-    MotorSigns_V2          = motor_v2_vec,
-    TimeToPhenoconv        = phenoconversion_vec,
-    NEFL                   = nefl_by_fluid[[fluid_name]],
-    Urine_Neopterin_V0     = urine_neopterin_vec,
-    Urine_p75ECD_V0        = urine_p75_vec,
-    Urine_Neopterin_Delta  = urine_neopterin_delta_vec,
-    Urine_p75ECD_Delta     = urine_p75_delta_vec,
-    col = list(
-      Converted             = c(`0` = "grey95", `1` = "#B2242A"),
-      Age_V0                = age_col,
-      MotorSigns_V0         = motor_col,
-      MotorSigns_V1         = motor_col,
-      MotorSigns_V2         = motor_col,
-      TimeToPhenoconv       = phenoconv_col,
-      NEFL                  = nefl_col,
-      Urine_Neopterin_V0    = urine_neo_col,
-      Urine_p75ECD_V0       = urine_p75_col,
-      Urine_Neopterin_Delta = urine_neo_delta_col,
-      Urine_p75ECD_Delta    = urine_p75_delta_col
-    ),
-    na_col = "white",
-    annotation_name_gp = gpar(fontsize = 9, fontface = "bold"),
-    simple_anno_size = unit(0.35, "cm")
-  )
-  
-  ht_fluid <- Heatmap(
-    mat_fluid,
-    name = "At-risk\n(score > 0)",
-    col = binary_col,
-    right_annotation = row_anno_fluid,
-    cluster_rows = TRUE,
-    cluster_columns = FALSE,
-    show_row_names = TRUE,
-    row_names_gp = gpar(fontsize = 8),
-    column_names_gp = gpar(fontsize = 9),
-    column_names_rot = 45,
-    column_title = paste0("PGMC risk classification in ", fluid_name),
-    column_title_gp = gpar(fontsize = 13, fontface = "bold"),
-    heatmap_legend_param = list(
-      title = "At-risk\n(score > 0)",
-      at = c("0", "1"),
-      labels = c("Not selected", "Selected")
-    )
-  )
-  
-  pdf(output_path, width = 10, height = 10)
-  draw(ht_fluid)
-  dev.off()
-  
-  ht_fluid
-}
-
 ## ------------------------------------------------------------------
 ## WORKFLOW
 ## ------------------------------------------------------------------
@@ -290,7 +227,7 @@ for (pm in c("both", "CNS", "IMMUNE")) {
 ## ================================================================================
 ## Summary heatmap for all fluids
 
-clinical_data_extra_heatmap = read_excel("data input/all_participants_ID_visits_heatmap.xlsx")
+clinical_data_extra_heatmap = read_excel("data input/all_participants_ID_visits.xlsx")
 
 # gt PGMCs and data of fluids
 all_pgmc_ids <- protein_data_IDs %>% filter(type == "PGMC") %>% pull(ParticipantCode) %>% unique()
@@ -298,151 +235,178 @@ selection_matrix <- as.matrix(selection_wide[, names(model_registry)])
 column_split_fluid <- factor(model_fluid[colnames(selection_matrix)],
                              levels = c("SERUM", "PLASMA", "CSF"))
 
-## add info on converters
-converted_ids <- c("DE102", "TR119", "TR122","TR112")
-converted_vec <- as.integer(rownames(selection_matrix) %in% converted_ids)
-names(converted_vec) <- rownames(selection_matrix)
+visits <- c("V0", "V1", "V2", "V3")
 
-## Motor signs at all visits
-motor_v0_vec <- to_row_vec(get_visit_value("TotalMotorSigns", "V0"))
-motor_v1_vec <- to_row_vec(get_visit_value("TotalMotorSigns", "V1"))
-motor_v2_vec <- to_row_vec(get_visit_value("TotalMotorSigns", "V2"))
-
-# Age at V0
-age_v0_vec <- to_row_vec(get_visit_value("age","V0"))
-
-##  NEFL at V0
-nefl_serum_vec  <- to_row_vec(get_visit_value("Serum NEFL",  "V0"))
-nefl_plasma_vec <- to_row_vec(get_visit_value("Plasma NEFL", "V0"))
-nefl_csf_vec    <- to_row_vec(get_visit_value("CSF NEFL",    "V0"))
-
-## urine at V0
-urine_neopterin_vec <- to_row_vec(get_visit_value("umol neopterin/ mol creatinine", "V0"))
-urine_p75_vec       <- to_row_vec(get_visit_value("ng p75ECD/mg creatinine",       "V0"))
-
-## urine markers, delta between V0 and V1 
-neopterin_v0 <- get_visit_value("umol neopterin/ mol creatinine", "V0")
-neopterin_v1 <- get_visit_value("umol neopterin/ mol creatinine", "V1")
-common_neo   <- intersect(names(neopterin_v0), names(neopterin_v1))
-neopterin_delta_lookup <- setNames(neopterin_v1[common_neo] - neopterin_v0[common_neo], common_neo)
-urine_neopterin_delta_vec <- to_row_vec(neopterin_delta_lookup)
-
-p75_v0     <- get_visit_value("ng p75ECD/mg creatinine", "V0")
-p75_v1     <- get_visit_value("ng p75ECD/mg creatinine", "V1")
-common_p75 <- intersect(names(p75_v0), names(p75_v1))
-p75_delta_lookup <- setNames(p75_v1[common_p75] - p75_v0[common_p75], common_p75)
-urine_p75_delta_vec <- to_row_vec(p75_delta_lookup)
-
-## get time to phenoconversion
-phenoconversion_lookup <- clinical_data_extra_heatmap %>%
-  filter(ParticipantCode %in% converted_ids, !is.na(`Disease duration`)) %>%
-  distinct(ParticipantCode, `Disease duration`)
-
-if (any(duplicated(phenoconversion_lookup$ParticipantCode))) {
-  warning("Multiple distinct non-missing 'Disease duration' values found for at least one ",
-          "converted patient across visits -- check clinical_data_extra_heatmap. ",
-          "Taking the first one found per patient; verify this is correct.")
-  phenoconversion_lookup <- phenoconversion_lookup %>% distinct(ParticipantCode, .keep_all = TRUE)
+# participant label: ID + mutation
+mutation_lookup <- clinical_data_extra_heatmap %>%
+  filter(!is.na(mutation)) %>%
+  distinct(ParticipantCode, mutation)
+if (any(duplicated(mutation_lookup$ParticipantCode))) {
+  warning("More than one mutation found for at least one participant -- using the first.")
+  mutation_lookup <- mutation_lookup %>% distinct(ParticipantCode, .keep_all = TRUE)
 }
+mutation_vec <- deframe(mutation_lookup)[rownames(selection_matrix)]
+row_labels_vec <- ifelse(is.na(mutation_vec),
+                         rownames(selection_matrix),
+                         paste0(rownames(selection_matrix), " (", mutation_vec, ")"))
 
-missing_conversion <- setdiff(converted_ids, phenoconversion_lookup$ParticipantCode)
-if (length(missing_conversion) > 0) {
-  warning("No non-missing 'Disease duration' value found for: ",
-          paste(missing_conversion, collapse = ", "), " -- check these patients' records.")
+# age and motor signs
+age_v0_vec <- to_row_vec(get_visit_value("age", "V0"))
+
+motor_mat <- sapply(visits, function(v) to_row_vec(get_visit_value("TotalMotorSigns", v)))
+rownames(motor_mat) <- rownames(selection_matrix)
+colnames(motor_mat) <- visits
+
+# event markers (same logic as PGMC_motor_signs_per_visits.R)
+visit_index <- function(v) match(v, visits)
+
+pgmc_visits <- clinical_data_extra_heatmap %>%
+  filter(ParticipantCode %in% rownames(selection_matrix)) %>%
+  mutate(vi = visit_index(Visit))
+
+# PHENOCONVERSION: first visit with a positive disease duration (diagnosis)
+pheno_df <- pgmc_visits %>%
+  filter(type == "PGMC", DiseaseOnset == "ALS", `Disease duration` > 0) %>%
+  group_by(ParticipantCode) %>%
+  slice_min(`Disease duration`, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(ParticipantCode, vi)
+
+# MMI POSITIVE: first visit with motor signs > 0 
+mmi_pos_df <- pgmc_visits %>%
+  filter(!is.na(TotalMotorSigns), TotalMotorSigns > 0, !is.na(vi)) %>%
+  group_by(ParticipantCode) %>%
+  slice_min(vi, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(ParticipantCode, vi) %>%
+  anti_join(pheno_df, by = c("ParticipantCode", "vi"))
+
+# MMI NEGATIVE: motor signs > 0 at a visit and 0 at the next visit
+mmi_neg_df <- pgmc_visits %>%
+  filter(!is.na(vi)) %>%
+  arrange(ParticipantCode, vi) %>%
+  group_by(ParticipantCode) %>%
+  mutate(next_signs = lead(TotalMotorSigns), next_vi = lead(vi)) %>%
+  ungroup() %>%
+  filter(!is.na(TotalMotorSigns), TotalMotorSigns > 0,
+         next_vi == vi + 1, !is.na(next_signs), next_signs == 0) %>%
+  select(ParticipantCode, vi)
+
+make_keys <- function(df) paste(df$ParticipantCode, df$vi)
+pheno_keys <- make_keys(pheno_df)
+pos_keys   <- make_keys(mmi_pos_df)
+neg_keys   <- make_keys(mmi_neg_df)
+
+# colours
+mutation_levels <- unique(na.omit(mutation_vec))
+mutation_levels <- c(intersect(c("C9orf72", "SOD1", "TARDBP", "FUS"), mutation_levels),
+                     setdiff(mutation_levels, c("C9orf72", "SOD1", "TARDBP", "FUS", "NEK1")),
+                     intersect("NEK1", mutation_levels))
+mutation_palette <- c("C9orf72" = "#55AA82", "SOD1" = "#4661B9", "TARDBP" = "#B99E46",
+                      "FUS" = "#B96546", "NEK1" = "#8E6BBF")
+mutation_col <- mutation_palette[mutation_levels]
+names(mutation_col) <- mutation_levels
+extra <- is.na(mutation_col)
+if (any(extra)) mutation_col[extra] <- hcl.colors(sum(extra), "Pastel 1")
+binary_col <- c(`0` = "grey95", `1` = "#AD5291")
+age_col    <- colorRamp2(range(age_v0_vec, na.rm = TRUE), c("grey95", "#7B4F9E"))
+motor_col  <- colorRamp2(c(0, 8), c("white", "red"))
+
+# legend for the markers
+mk <- function(pch, fill) {
+  function(x, y, w, h) grid.points(x, y, pch = pch, size = unit(2.5, "mm"),
+                                   gp = gpar(col = "black", fill = fill, lwd = 0.8))
 }
-
-phenoconversion_map <- phenoconversion_lookup %>%
-  mutate(time_to_phenoconversion = -`Disease duration`) %>%
-  select(ParticipantCode, time_to_phenoconversion) %>%
-  deframe()
-
-phenoconversion_vec <- setNames(rep(NA_real_, nrow(selection_matrix)), rownames(selection_matrix))
-phenoconversion_vec[names(phenoconversion_map)] <- phenoconversion_map
-
-
-## combined heatmap with results of all fluids
-binary_col     <- c(`0` = "grey95", `1` = "#AD5291")
-age_col        <- colorRamp2(range(age_v0_vec, na.rm = TRUE), c("grey95", "#7B4F9E"))
-motor_col      <- colorRamp2(range(c(motor_v0_vec, motor_v1_vec, motor_v2_vec), na.rm = TRUE), c("grey95", "#2A6DB2"))
-phenoconv_col  <- colorRamp2(range(phenoconversion_vec, na.rm = TRUE), c("#FEE8C8", "#B2242A")) 
-nefl_col       <- colorRamp2(range(c(nefl_serum_vec, nefl_plasma_vec, nefl_csf_vec), na.rm = TRUE),
-                             c("grey95", "#21918C"))
-urine_neo_col  <- colorRamp2(range(urine_neopterin_vec, na.rm = TRUE), c("grey95", "#B2936F"))
-urine_p75_col  <- colorRamp2(range(urine_p75_vec, na.rm = TRUE), c("grey95", "#B2936F"))         
-
-neo_delta_range <- max(abs(urine_neopterin_delta_vec), na.rm = TRUE)
-p75_delta_range <- max(abs(urine_p75_delta_vec), na.rm = TRUE)
-urine_neo_delta_col <- colorRamp2(c(-neo_delta_range, 0, neo_delta_range), c("#2166AC", "white", "#B2182B"))
-urine_p75_delta_col <- colorRamp2(c(-p75_delta_range, 0, p75_delta_range), c("#2166AC", "white", "#B2182B"))
-
-row_anno <- rowAnnotation(
-  Converted              = converted_vec,
-  Age_V0                 = age_v0_vec,
-  MotorSigns_V0          = motor_v0_vec,
-  MotorSigns_V1          = motor_v1_vec,
-  MotorSigns_V2          = motor_v2_vec,
-  TimeToPhenoconv        = phenoconversion_vec,
-  NEFL_Serum             = nefl_serum_vec,
-  NEFL_Plasma            = nefl_plasma_vec,
-  NEFL_CSF               = nefl_csf_vec,
-  Urine_Neopterin_V0     = urine_neopterin_vec,
-  Urine_p75ECD_V0        = urine_p75_vec,
-  Urine_Neopterin_Delta  = urine_neopterin_delta_vec,
-  Urine_p75ECD_Delta     = urine_p75_delta_vec,
-  col = list(
-    Converted             = c(`0` = "grey95", `1` = "#B2242A"),
-    Age_V0                = age_col,
-    MotorSigns_V0         = motor_col,
-    MotorSigns_V1         = motor_col,
-    MotorSigns_V2         = motor_col,
-    TimeToPhenoconv       = phenoconv_col,
-    NEFL_Serum            = nefl_col,
-    NEFL_Plasma           = nefl_col,
-    NEFL_CSF              = nefl_col,
-    Urine_Neopterin_V0    = urine_neo_col,
-    Urine_p75ECD_V0       = urine_p75_col,
-    Urine_Neopterin_Delta = urine_neo_delta_col,
-    Urine_p75ECD_Delta    = urine_p75_delta_col
-  ),
-  na_col = "white",
-  annotation_name_gp = gpar(fontsize = 9, fontface = "bold"),
-  simple_anno_size = unit(0.35, "cm")
+lgd_markers <- Legend(
+  title = "Events",
+  labels = c("Phenoconversion", "MMI positive", "MMI negative"),
+  graphics = list(mk(21, "black"), mk(24, "white"), mk(25, "white")),
+  background = "white"
 )
 
-ht <- Heatmap(
-  selection_matrix,
-  name = "At-risk\n(score > 0)",
-  col = binary_col,
-  right_annotation = row_anno,
-  column_split = column_split_fluid,
-  cluster_column_slices = FALSE,   
-  cluster_rows = TRUE,
-  cluster_columns = FALSE,         
-  show_row_names = TRUE,
-  row_names_gp = gpar(fontsize = 7),
-  column_names_gp = gpar(fontsize = 8),
-  column_names_rot = 45,
-  column_title = c("SERUM", "PLASMA", "CSF"),
-  column_title_gp = gpar(fontsize = 12, fontface = "bold"),
-  heatmap_legend_param = list(
-    title = "At-risk\n(score > 0)",
-    at = c("0", "1"),
-    labels = c("Not selected", "Selected")
+# heatmap builder
+make_pgmc_summary_heatmap <- function(fluids, output_path, width = 17, height = 10) {
+  
+  cols_keep <- colnames(selection_matrix)[column_split_fluid %in% fluids]
+  mat <- selection_matrix[, cols_keep, drop = FALSE]
+  multi <- length(fluids) > 1
+  
+  ht_main <- Heatmap(
+    mat,
+    name = "At-risk\n(score > 0)",
+    col = binary_col,
+    column_split = if (multi) droplevels(column_split_fluid[column_split_fluid %in% fluids]) else NULL,
+    cluster_column_slices = FALSE,
+    cluster_rows = TRUE,
+    cluster_columns = FALSE,
+    show_row_names = TRUE,
+    row_labels = row_labels_vec,
+    row_names_gp = gpar(fontsize = 7),
+    column_names_gp = gpar(fontsize = 8),
+    column_names_rot = 45,
+    column_title = if (multi) as.character(fluids) else paste0("PGMC risk classification in ", fluids),
+    column_title_gp = gpar(fontsize = 12, fontface = "bold"),
+    heatmap_legend_param = list(
+      title = "At-risk\n(score > 0)",
+      at = c("0", "1"),
+      labels = c("Not selected", "Selected")
+    )
   )
-)
+  
+  age_anno <- rowAnnotation(
+    Mutation = factor(mutation_vec, levels = mutation_levels),
+    Age = age_v0_vec,
+    col = list(Mutation = mutation_col, Age = age_col),
+    na_col = "white",
+    annotation_name_gp = gpar(fontsize = 9, fontface = "bold"),
+    simple_anno_size = unit(0.35, "cm")
+  )
+  
+  ht_motor <- Heatmap(
+    motor_mat,
+    name = "Total motor signs",
+    col = motor_col,
+    na_col = "grey90",
+    left_annotation = age_anno,
+    cluster_rows = FALSE,
+    cluster_columns = FALSE,
+    show_row_names = FALSE,
+    column_names_gp = gpar(fontsize = 9),
+    column_names_rot = 0,
+    column_names_centered = TRUE,
+    column_title = "Motor signs per visit",
+    column_title_gp = gpar(fontsize = 11, fontface = "bold"),
+    width = unit(ncol(motor_mat) * 6, "mm"),
+    heatmap_legend_param = list(at = 0:8),
+    layer_fun = function(j, i, x, y, w, h, fill) {
+      # tiles first, then markers on top so neighbouring tiles do not cover them
+      grid.rect(x, y, w, h, gp = gpar(fill = fill, col = "grey60", lwd = 0.5))
+      keys <- paste(rownames(motor_mat)[i], j)
+      
+      sel <- keys %in% pos_keys                       # MMI positive: left edge of the visit
+      if (any(sel)) grid.points(x[sel] - w[sel] / 2, y[sel], pch = 24, size = unit(1.8, "mm"),
+                                gp = gpar(fill = "white", col = "black", lwd = 0.8))
+      sel <- keys %in% neg_keys                       # MMI negative: boundary to the next visit
+      if (any(sel)) grid.points(x[sel] + w[sel] / 2, y[sel], pch = 25, size = unit(1.8, "mm"),
+                                gp = gpar(fill = "white", col = "black", lwd = 0.8))
+      sel <- keys %in% pheno_keys                     # phenoconversion: left edge of the visit
+      if (any(sel)) grid.points(x[sel] - w[sel] / 2, y[sel], pch = 21, size = unit(2.2, "mm"),
+                                gp = gpar(fill = "black", col = "black", lwd = 0.5))
+    }
+  )
+  
+  pdf(output_path, width = width, height = height)
+  draw(ht_main + ht_motor,
+       annotation_legend_list = list(lgd_markers),
+       merge_legends = TRUE)
+  dev.off()
+  
+  invisible(ht_main + ht_motor)
+}
 
-pdf("plots/venn/PGMC_summary_heatmap_all_fluids.pdf", width = 17, height = 10)
-draw(ht)
-dev.off()
-
-# same heatmap but by fluid 
-nefl_by_fluid <- list(
-  SERUM  = nefl_serum_vec,
-  PLASMA = nefl_plasma_vec,
-  CSF    = nefl_csf_vec
-)
-
-ht_serum  <- make_fluid_summary_heatmap("SERUM",  "plots/venn/PGMC_summary_heatmap_SERUM.pdf")
-ht_plasma <- make_fluid_summary_heatmap("PLASMA", "plots/venn/PGMC_summary_heatmap_PLASMA.pdf")
-ht_csf    <- make_fluid_summary_heatmap("CSF",    "plots/venn/PGMC_summary_heatmap_CSF.pdf")
-
+# all fluids together and per fluid
+ht_all    <- make_pgmc_summary_heatmap(c("SERUM", "PLASMA", "CSF"),
+                                       "plots/venn/PGMC_summary_heatmap_all_fluids.pdf", width = 17)
+ht_serum  <- make_pgmc_summary_heatmap("SERUM",  "plots/venn/PGMC_summary_heatmap_SERUM.pdf",  width = 10)
+ht_plasma <- make_pgmc_summary_heatmap("PLASMA", "plots/venn/PGMC_summary_heatmap_PLASMA.pdf", width = 10)
+ht_csf    <- make_pgmc_summary_heatmap("CSF",    "plots/venn/PGMC_summary_heatmap_CSF.pdf",    width = 10)
