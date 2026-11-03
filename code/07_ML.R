@@ -137,7 +137,7 @@ zscore_proteins <- function(wide_df, protein_cols, center = NULL, scale = NULL) 
   mat <- as.matrix(wide_df[, protein_cols, drop = FALSE])
   
   if (is.null(center) || is.null(scale)) {
-    ## discovery mode: compute fresh from this data, and expose the params
+    ## premodiALS mode: compute fresh from this data, and expose the params
     scaled_mat <- scale(mat)
     center <- attr(scaled_mat, "scaled:center")
     scale  <- attr(scaled_mat, "scaled:scale")
@@ -853,7 +853,7 @@ find_optimal_signature_CNS_IMMUNE <- function(data_all,
   
   set.seed(seed)
   
-  min_proteins = 3
+  min_proteins = 2
   
   X <- as.matrix(data_all[, c(ranked_proteins, covariate_cols)])
   y <- data_all$status
@@ -2902,3 +2902,544 @@ for (fl in c("SERUM", "PLASMA", "CSF")) {
 fluid_boxplot_results$SERUM$stats
 fluid_boxplot_results$PLASMA$stats
 fluid_boxplot_results$CSF$stats
+
+################################################################################
+#### check for several signatures on plasma, on MAXOMOD
+# 1) NEFL only, 2) 10 proteins, 3) CNS + immune signature from plasma
+fluid <- "PLASMA"
+covs <- c("age", "sex_male")
+n_boot <- 100
+out_dir <- "plots/CNS_IMMUNE_panels/ML/signature_comparison/"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+# discovery data (ALS vs CTR) and MAXOMOD in the same format as before
+train_wide <- build_ml_dataset_type(all_data, fluid, c("ALS", "CTR"), "NPQ", "ALS",
+                                    covariate_table = covariate_table)
+zparams <- attr(train_wide, "panel_zscore_params")
+corr_lookup <- attr(train_wide, "corr_lookup")
+
+train_df <- train_wide %>%
+  select(-SampleName) %>%
+  rename(status = type) %>%
+  mutate(status = ifelse(status == "ALS", 1, 0)) %>%
+  as.data.frame()
+
+ext_wide <- build_external_ml_dataset(external_all_data, fluid, "NPQ",
+                                      external_covariate_table,
+                                      corr_lookup_discovery = corr_lookup,
+                                      panel_zscore_params = zparams)
+ext_wide <- as.data.frame(ext_wide)
+
+# columns have _CNS / _IMMUNE suffixes, so look up the right name
+get_cols <- function(prots) {
+  sapply(prots, function(p) {
+    hits <- intersect(c(p, paste0(p, c("_CNS", "_IMMUNE"))), names(train_df))
+    if (length(hits) == 0) stop(p, " not found in the ", fluid, " data")
+    if (length(hits) > 1) message(p, " found as ", paste(hits, collapse = " and "), ", using ", hits[1])
+    hits[1]
+  }, USE.NAMES = FALSE)
+}
+
+sigs <- list(
+  "NEFL only" = get_cols("NEFL"),
+  "pTau-181 only" = get_cols("pTau-181"),
+  "2 proteins (NEFL, pTau-181)" = get_cols(c("NEFL", "pTau-181")),
+  "3 proteins (NEFL, pTau-181, NEFH)" = get_cols(c("NEFL", "pTau-181", "NEFH")),
+  "4 proteins (Lasso, plasma)" = lasso_optimal_protein_signature_plasma_both$optimal_proteins,
+  "10 proteins (Kim et al.)" = get_cols(c("NEFL", "FOLR1", "pTau-181", "TREM1", "VEGFA",
+                                          "NEFH", "CALCA", "NRGN", "LAMP3", "PTX3"))
+)
+print(sigs)
+stopifnot(all(unlist(sigs) %in% names(ext_wide)))
+
+# fit on a training set, predict MAXOMOD
+fit_pred <- function(train, prots) {
+  ext_ok <- complete.cases(ext_wide[, c(prots, covs), drop = FALSE])
+  
+  if (length(prots) == 0) {
+    # clinical variables only
+    mod <- glm(status ~ age + sex_male, data = train, family = binomial)
+    p <- as.numeric(predict(mod, newdata = ext_wide[ext_ok, ], type = "response"))
+    return(list(p = p, y = ext_wide$status[ext_ok], id = ext_wide$SampleName[ext_ok],
+                coefs = coef(mod)))
+  }
+  
+  x <- scale(as.matrix(train[, prots, drop = FALSE]))
+  x_train <- cbind(x, as.matrix(train[, covs, drop = FALSE]))
+  pen <- ifelse(colnames(x_train) %in% covs, 0, 1)
+  cvm <- cv.glmnet(x_train, train$status, family = "binomial", alpha = 0,
+                   penalty.factor = pen)
+  
+  x_ext <- as.matrix(ext_wide[, c(prots, covs), drop = FALSE])
+  x_ext[, prots] <- scale(x_ext[, prots, drop = FALSE],
+                          center = attr(x, "scaled:center"),
+                          scale = attr(x, "scaled:scale"))
+  ok <- complete.cases(x_ext)
+  list(p = as.numeric(predict(cvm, x_ext[ok, , drop = FALSE], s = "lambda.min", type = "response")),
+       y = ext_wide$status[ok],
+       id = ext_wide$SampleName[ok],
+       coefs = as.matrix(coef(cvm, s = "lambda.min"))[, 1])
+}
+
+set.seed(123)
+fpr_grid <- seq(0, 1, 0.01)
+res <- list()
+
+for (nm in names(sigs)) {
+  prots <- sigs[[nm]]
+  
+  # model on all discovery samples
+  full <- fit_pred(train_df, prots)
+  roc_full <- roc(full$y, full$p, levels = c(0, 1), direction = "<", quiet = TRUE)
+  
+  # refits on random 80% of the discovery samples
+  aucs <- c()
+  tprs <- NULL
+  for (b in 1:n_boot) {
+    idx <- as.vector(createDataPartition(factor(train_df$status), p = 0.8, list = FALSE))
+    pr <- fit_pred(train_df[idx, ], prots)
+    r <- roc(pr$y, pr$p, levels = c(0, 1), direction = "<", quiet = TRUE)
+    aucs <- c(aucs, as.numeric(auc(r)))
+    tprs <- rbind(tprs, approx(1 - r$specificities, r$sensitivities,
+                               xout = fpr_grid, ties = max, rule = 2)$y)
+  }
+  
+  res[[nm]] <- list(aucs = aucs, tpr = colMeans(tprs),
+                    fpr_full = 1 - roc_full$specificities,
+                    tpr_full = roc_full$sensitivities,
+                    auc_full = as.numeric(auc(roc_full)),
+                    ci_full = as.numeric(ci.auc(roc_full)),
+                    n = length(full$y),
+                    full = full,
+                    coefs_full = full$coefs)
+}
+
+auc_table <- bind_rows(lapply(names(res), function(nm) {
+  r <- res[[nm]]
+  data.frame(model = nm,
+             n_proteins = length(sigs[[nm]]),
+             n_maxomod = r$n,
+             mean_auc = mean(r$aucs),
+             sd_auc = sd(r$aucs),
+             auc_low = quantile(r$aucs, 0.025),
+             auc_high = quantile(r$aucs, 0.975),
+             auc_full_model = r$auc_full,
+             full_ci_low = r$ci_full[1],
+             full_ci_high = r$ci_full[3])
+}))
+print(auc_table)
+write.csv(auc_table, paste0(out_dir, "AUC_MAXOMOD_", fluid, ".csv"), row.names = FALSE)
+
+# weights of the proteins in each model (model fitted on all discovery samples)
+weights_tab <- bind_rows(lapply(names(res), function(nm) {
+  cf <- res[[nm]]$coefs_full
+  cf <- cf[names(cf) %in% sigs[[nm]]]
+  data.frame(model = nm, protein = names(cf), weight = unname(cf), row.names = NULL)
+})) %>%
+  group_by(model) %>%
+  arrange(desc(abs(weight)), .by_group = TRUE) %>%
+  ungroup()
+
+for (nm in names(res)) {
+  cat("\n", nm, "\n")
+  print(as.data.frame(weights_tab[weights_tab$model == nm, c("protein", "weight")]), digits = 3)
+}
+write.csv(weights_tab, paste0(out_dir, "weights_", fluid, ".csv"), row.names = FALSE)
+
+# paired DeLong tests between models (same MAXOMOD samples)
+delong <- bind_rows(lapply(combn(names(res), 2, simplify = FALSE), function(pr) {
+  a <- res[[pr[1]]]$full
+  b <- res[[pr[2]]]$full
+  common <- intersect(a$id, b$id)
+  y <- a$y[match(common, a$id)]
+  ra <- roc(y, a$p[match(common, a$id)], levels = c(0, 1), direction = "<", quiet = TRUE)
+  rb <- roc(y, b$p[match(common, b$id)], levels = c(0, 1), direction = "<", quiet = TRUE)
+  tst <- roc.test(ra, rb, paired = TRUE, method = "delong")
+  data.frame(model_1 = pr[1], model_2 = pr[2],
+             auc_1 = as.numeric(auc(ra)), auc_2 = as.numeric(auc(rb)),
+             p_value = tst$p.value)
+}))
+delong$p_adj <- p.adjust(delong$p_value, method = "BH")
+print(delong)
+write.csv(delong, paste0(out_dir, "DeLong_MAXOMOD_", fluid, ".csv"), row.names = FALSE)
+
+# colours and plot theme
+mod_cols <- setNames(c("#555555",   # dark grey
+                       "#E69F00",   # orange
+                       "#56B4E9",   # sky blue
+                       "#D55E00",   # vermillion
+                       "#009E73",   # bluish green
+                       "#CC79A7")[seq_along(sigs)], names(sigs))   # reddish purple
+
+# plot: weight of every protein in every model (bars side by side, same colours as the ROC plots)
+plot_df <- weights_tab
+prot_order <- plot_df %>% group_by(protein) %>% 
+  summarise(m = mean(weight)) %>% arrange(m) %>% pull(protein)
+plot_df$protein <- factor(plot_df$protein, levels = prot_order)
+plot_df$model <- factor(plot_df$model, levels = names(sigs))
+
+p_weights <- ggplot(plot_df, aes(x = weight, y = protein, fill = model)) +
+  geom_col(position = position_dodge(width = 0.8, preserve = "single"), width = 0.75) +
+  geom_vline(xintercept = 0, color = "grey40") +
+  scale_fill_manual(values = mod_cols, name = NULL) +
+  guides(fill = guide_legend(reverse = TRUE)) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "bottom", legend.direction = "vertical") +
+  labs(x = "Weight", y = NULL,
+       title = paste0("Protein weights in each model, ", fluid))
+print(p_weights)
+ggsave(paste0(out_dir, "weights_", fluid, ".pdf"), p_weights,
+       width = 8, height = 0.5 * length(prot_order) + 4)
+
+roc_theme <- theme_minimal(base_size = 13) +
+  theme(panel.background = element_rect(fill = "white", color = NA),
+        plot.background = element_rect(fill = "white", color = NA),
+        axis.line = element_line(color = "grey30"),
+        axis.ticks = element_line(color = "grey30"),
+        legend.position = "bottom",
+        legend.direction = "vertical")
+
+# ROC of the model fitted on all discovery samples 
+roc_full_df <- bind_rows(lapply(names(res), function(nm) {
+  d <- data.frame(model = nm, fpr = res[[nm]]$fpr_full, tpr = res[[nm]]$tpr_full)
+  d[order(d$fpr, d$tpr), ]
+}))
+labs_full <- setNames(sprintf("%s (AUC = %.2f, 95%% CI %.2f-%.2f)", auc_table$model,
+                              auc_table$auc_full_model, auc_table$full_ci_low, auc_table$full_ci_high),
+                      auc_table$model)
+roc_full_df$model <- factor(roc_full_df$model, levels = names(labs_full))
+
+p_roc <- ggplot(roc_full_df, aes(x = fpr, y = tpr, color = model)) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "darkgrey") +
+  geom_line(linewidth = 1.2) +
+  scale_color_manual(values = mod_cols, labels = labs_full, name = NULL) +
+  coord_equal() +
+  roc_theme +
+  labs(x = "1 - Specificity", y = "Sensitivity",
+       title = paste0("External validation on MAXOMOD data with ", fluid, " signatures"))
+
+print(p_roc)
+ggsave(paste0(out_dir, "ROC_MAXOMOD_comparison_", fluid, ".pdf"), p_roc,
+       width = 7.5, height = 9, dpi = 300)
+
+
+# PGMC risk score in plasma with other signatures: NEFL only and Kim et al. (10 proteins)
+sig_dir <- "plots/CNS_IMMUNE_panels/ML/Signatures/"
+dir.create(sig_dir, recursive = TRUE, showWarnings = FALSE)
+
+# column names in the plasma data (_CNS / _IMMUNE suffix, none if the two panels were merged)
+plasma_cols <- names(build_ml_dataset_type(all_data, "PLASMA", c("ALS", "CTR"), "NPQ", "ALS",
+                                           covariate_table = covariate_table, panel_mode = "both"))
+find_cols <- function(prots) {
+  sapply(prots, function(p) {
+    hits <- intersect(c(p, paste0(p, c("_CNS", "_IMMUNE"))), plasma_cols)
+    if (length(hits) == 0) stop(p, " not found in the plasma data")
+    if (length(hits) > 1) message(p, " found as ", paste(hits, collapse = " and "), ", using ", hits[1])
+    hits[1]
+  }, USE.NAMES = FALSE)
+}
+
+kim_prots <- c("NEFL", "FOLR1", "pTau-181", "TREM1", "VEGFA",
+               "NEFH", "CALCA", "NRGN", "LAMP3", "PTX3")
+signatures <- list("NEFL only" = find_cols("NEFL"),
+                   "pTau-181 only" = find_cols("pTau-181"),
+                   "2 proteins (NEFL, pTau-181)" = find_cols(c("NEFL", "pTau-181")),
+                   "3 proteins (NEFL, pTau-181, NEFH)" = find_cols(c("NEFL", "pTau-181", "NEFH")),
+                   "4 proteins (Lasso, plasma)" = lasso_optimal_protein_signature_plasma_both$optimal_proteins,
+                   "Kim et al. (10 proteins)" = find_cols(kim_prots))
+print(signatures)
+
+# train on ALS vs CTR and score the PGMC (the 4-protein signature was already run)
+sig_runs <- list()
+for (nm in setdiff(names(signatures), "4 proteins (Lasso, plasma)")) {
+  folder <- paste0(sig_dir, gsub("[^A-Za-z0-9]+", "_", nm), "/")
+  dir.create(folder, recursive = TRUE, showWarnings = FALSE)
+  sig_runs[[nm]] <- run_ALS_signature_workflow_CNS_IMMUNE(all_data,
+                                                          signatures[[nm]],
+                                                          fluid = "PLASMA",
+                                                          model_type = "lasso",
+                                                          output_prefix = folder)
+  print(sig_runs[[nm]]$coefficients)
+}
+sig_runs[["4 proteins (Lasso, plasma)"]] <- lasso_PGMC_plasma_signature_both
+sig_runs <- sig_runs[names(signatures)]   # same order as in the signature list
+
+# risk scores, with and without the age and sex contribution
+# "proteins only" = the score with age and sex fixed at the mean of the ALS/CTR training samples
+score_all <- function(nm) {
+  res <- sig_runs[[nm]]$results %>%
+    left_join(protein_data_IDs %>% select(SampleName, ParticipantCode, type), by = "SampleName") %>%
+    distinct()
+  cf <- sig_runs[[nm]]$coefficients
+  b_age <- cf$lambda.min[cf$feature == "age"]
+  b_sex <- cf$lambda.min[cf$feature == "sex_male"]
+  train <- res %>% filter(type %in% c("ALS", "CTR"))
+  res %>%
+    transmute(SampleName, ParticipantCode, type, signature = nm, age,
+              risk_score = ALS_risk_score,
+              risk_score_protein = ALS_risk_score -
+                b_age * (age - mean(train$age)) - b_sex * (sex_male - mean(train$sex_male)))
+}
+all_scores <- bind_rows(lapply(names(sig_runs), score_all))
+
+# age-adjusted: how far is the protein-only score above the controls of the same age?
+z_cut <- 2   # at risk = more than z_cut SD above the controls of the same age
+all_scores$expected <- NA_real_
+all_scores$z_age <- NA_real_
+ctr_fits <- list()
+for (nm in names(sig_runs)) {
+  idx <- all_scores$signature == nm
+  ctr <- all_scores[idx & all_scores$type == "CTR", ]
+  fit <- lm(risk_score_protein ~ age, data = ctr)
+  all_scores$expected[idx] <- predict(fit, newdata = all_scores[idx, ])
+  all_scores$z_age[idx] <- (all_scores$risk_score_protein[idx] - all_scores$expected[idx]) / sigma(fit)
+  ctr_fits[[nm]] <- data.frame(signature = nm, n_ctr = nrow(ctr),
+                               min_ctr_age = min(ctr$age), max_ctr_age = max(ctr$age),
+                               intercept = coef(fit)[1], slope = coef(fit)[2],
+                               r2 = summary(fit)$r.squared, sd_resid = sigma(fit))
+}
+ctr_fits <- bind_rows(ctr_fits)
+rownames(ctr_fits) <- NULL
+print(ctr_fits, digits = 3)   # control trend of the protein-only score with age
+write.csv(ctr_fits, paste0(sig_dir, "control_age_trend_PLASMA.csv"), row.names = FALSE)
+
+pgmc_scores <- all_scores %>%
+  filter(type == "PGMC") %>%
+  left_join(ctr_fits %>% select(signature, max_ctr_age), by = "signature") %>%
+  mutate(at_risk = risk_score > 0,
+         at_risk_protein = risk_score_protein > 0,
+         at_risk_age = z_age > z_cut,
+         beyond_ctr_age = age > max_ctr_age)
+write.csv(pgmc_scores, paste0(sig_dir, "PGMC_risk_scores_by_sample_PLASMA.csv"), row.names = FALSE)
+
+# one line per participant and signature
+by_participant <- pgmc_scores %>%
+  group_by(ParticipantCode, signature) %>%
+  summarise(n_samples = n(),
+            n_at_risk = sum(at_risk), n_at_risk_protein = sum(at_risk_protein),
+            n_at_risk_age = sum(at_risk_age),
+            max_score = max(risk_score), max_score_protein = max(risk_score_protein),
+            max_z_age = max(z_age), beyond_ctr_age = any(beyond_ctr_age),
+            .groups = "drop")
+by_participant_wide <- by_participant %>%
+  pivot_wider(names_from = signature,
+              values_from = c(max_score, max_score_protein, max_z_age,
+                              n_at_risk, n_at_risk_protein, n_at_risk_age))
+write.csv(by_participant_wide, paste0(sig_dir, "PGMC_risk_by_participant_PLASMA.csv"), row.names = FALSE)
+
+# PGMC that converted to ALS
+converted_ids <- c("TR119", "DE102", "TR122", "TR112")
+
+# how many converters and non-converters are at risk with each model and definition
+conv_summary <- by_participant %>%
+  mutate(converter = ParticipantCode %in% converted_ids) %>%
+  group_by(signature) %>%
+  summarise(converters_at_risk = sum(converter & n_at_risk > 0),
+            converters_at_risk_protein = sum(converter & n_at_risk_protein > 0),
+            converters_at_risk_age = sum(converter & n_at_risk_age > 0),
+            non_converters_at_risk = sum(!converter & n_at_risk > 0),
+            non_converters_at_risk_protein = sum(!converter & n_at_risk_protein > 0),
+            non_converters_at_risk_age = sum(!converter & n_at_risk_age > 0),
+            n_converters = sum(converter), n_non_converters = sum(!converter))
+print(as.data.frame(conv_summary))
+write.csv(conv_summary, paste0(sig_dir, "PGMC_converters_summary_PLASMA.csv"), row.names = FALSE)
+
+print(by_participant %>%
+        filter(ParticipantCode %in% converted_ids) %>%
+        select(ParticipantCode, signature, max_score, max_score_protein, max_z_age, beyond_ctr_age) %>%
+        arrange(ParticipantCode, signature) %>% as.data.frame(), digits = 2)
+
+# who is at risk with each signature
+for (nm in names(sig_runs)) {
+  d <- by_participant[by_participant$signature == nm, ]
+  full_ids <- d$ParticipantCode[d$n_at_risk > 0]
+  prot_ids <- d$ParticipantCode[d$n_at_risk_protein > 0]
+  age_ids <- d$ParticipantCode[d$n_at_risk_age > 0]
+  message(nm,
+          "\n  at risk with age and sex (", length(full_ids), "): ", paste(sort(full_ids), collapse = ", "),
+          "\n  at risk, proteins only (", length(prot_ids), "): ", paste(sort(prot_ids), collapse = ", "),
+          "\n  at risk, age-adjusted (", length(age_ids), "): ", paste(sort(age_ids), collapse = ", "),
+          "\n  at risk with age and sex but not age-adjusted: ", paste(sort(setdiff(full_ids, age_ids)), collapse = ", "))
+}
+
+# # plot to check: protein-only score against age, controls as reference
+# ctr_all <- all_scores %>% filter(type == "CTR")
+# p_age <- ggplot() +
+#   geom_rect(data = ctr_fits, aes(xmin = max_ctr_age, xmax = Inf, ymin = -Inf, ymax = Inf),
+#             fill = "grey93", inherit.aes = FALSE) +
+#   geom_point(data = ctr_all, aes(x = age, y = risk_score_protein), color = "#6F8EB2", alpha = 0.6) +
+#   geom_abline(data = ctr_fits, aes(intercept = intercept, slope = slope), color = "#6F8EB2") +
+#   geom_abline(data = ctr_fits, aes(intercept = intercept + z_cut * sd_resid, slope = slope),
+#               color = "#6F8EB2", linetype = "dashed") +
+#   geom_point(data = pgmc_scores, aes(x = age, y = risk_score_protein, fill = at_risk_age),
+#              shape = 21, color = "#ad5291", size = 2.5) +
+#   geom_point(data = pgmc_scores %>% filter(ParticipantCode %in% converted_ids),
+#              aes(x = age, y = risk_score_protein), shape = 8, size = 3.5) +
+#   ggrepel::geom_text_repel(data = pgmc_scores %>% filter(ParticipantCode %in% converted_ids),
+#                            aes(x = age, y = risk_score_protein, label = ParticipantCode),
+#                            size = 3, max.overlaps = Inf) +
+#   scale_fill_manual(values = c(`TRUE` = "#ad5291", `FALSE` = "white"),
+#                     name = paste0("PGMC above controls\n(> ", z_cut, " SD, same age)")) +
+#   facet_wrap(~signature, scales = "free_y", ncol = 3) +
+#   theme_classic(base_size = 12) +
+#   theme(strip.background = element_blank(), strip.text = element_text(face = "bold")) +
+#   labs(x = "Age", y = "Protein-only risk score",
+#        title = "PGMC against the control trend with age (plasma)",
+#        subtitle = "Blue = premodiALS controls with their linear trend and the cut-off (dashed); star = converter; grey area = older than any control")
+# print(p_age)
+# ggsave(paste0(sig_dir, "PGMC_score_vs_age_PLASMA.pdf"), p_age, width = 14, height = 8)
+
+# agreement between NEFL only and Kim et al. (per sample, full score)
+both <- pgmc_scores %>%
+  filter(signature %in% c("NEFL only", "Kim et al. (10 proteins)")) %>%
+  select(SampleName, ParticipantCode, signature, risk_score, at_risk) %>%
+  pivot_wider(names_from = signature, values_from = c(risk_score, at_risk))
+print(table(NEFL = both$`at_risk_NEFL only`, Kim = both$`at_risk_Kim et al. (10 proteins)`))
+
+p_cmp <- ggplot(both, aes(x = `risk_score_NEFL only`, y = `risk_score_Kim et al. (10 proteins)`)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_point(color = "#ad5291", size = 2, alpha = 0.7) +
+  ggrepel::geom_text_repel(
+    data = both %>% filter(`at_risk_NEFL only` | `at_risk_Kim et al. (10 proteins)`),
+    aes(label = ParticipantCode), size = 3, max.overlaps = Inf) +
+  theme_classic(base_size = 12) +
+  labs(x = "Risk score, NEFL only", y = "Risk score, Kim et al. signature",
+       title = "PGMC risk scores in plasma")
+print(p_cmp)
+ggsave(paste0(sig_dir, "PGMC_risk_NEFL_vs_Kim_PLASMA.pdf"), p_cmp, width = 6, height = 5)
+
+# heatmap
+st <- by_participant %>%
+  mutate(status = ifelse(n_at_risk == 0, 0, ifelse(n_at_risk == n_samples, 2, 1))) %>%
+  select(ParticipantCode, signature, status) %>%
+  pivot_wider(names_from = signature, values_from = status)
+sc <- by_participant %>%
+  select(ParticipantCode, signature, max_score) %>%
+  pivot_wider(names_from = signature, values_from = max_score)
+
+status_all <- as.matrix(st[, names(sig_runs)])
+score_all_mat <- as.matrix(sc[match(st$ParticipantCode, sc$ParticipantCode), names(sig_runs)])
+rownames(status_all) <- rownames(score_all_mat) <- st$ParticipantCode
+
+n_full <- rowSums(status_all > 0, na.rm = TRUE)
+ord <- order(-n_full, -rowMeans(score_all_mat, na.rm = TRUE))
+print(table(`models at risk` = n_full))
+
+status_num <- status_all[ord, ]
+score_ord <- score_all_mat[ord, ]
+status_chr <- matrix(as.character(status_num), nrow = nrow(status_num), dimnames = dimnames(status_num))
+
+risk_col <- c("0" = "grey95", "1" = "#D9A6C8", "2" = "#ad5291")
+models_col <- c("0" = "white", "1" = "#F3E5EE", "2" = "#E8CDE0", "3" = "#D9A6C8",
+                "4" = "#C783AF", "5" = "#B26A9C", "6" = "#7E2F65")
+
+ht_risk <- Heatmap(
+  status_chr,
+  name = "At risk",
+  col = risk_col,
+  na_col = "white",
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  row_names_gp = gpar(fontsize = 8,
+                      fontface = ifelse(rownames(status_chr) %in% converted_ids, "bold", "plain")),
+  column_names_gp = gpar(fontsize = 8),
+  column_names_rot = 45,
+  rect_gp = gpar(col = "white", lwd = 1),
+  left_annotation = rowAnnotation(
+    Converter = ifelse(rownames(status_chr) %in% converted_ids, "Yes", "No"),
+    col = list(Converter = c(Yes = "black", No = "white")),
+    annotation_name_gp = gpar(fontsize = 9, fontface = "bold"),
+    simple_anno_size = unit(0.35, "cm")),
+  right_annotation = rowAnnotation(
+    `Models at risk` = as.character(n_full[ord]),
+    col = list(`Models at risk` = models_col),
+    annotation_name_gp = gpar(fontsize = 9, fontface = "bold"),
+    simple_anno_size = unit(0.35, "cm")),
+  heatmap_legend_param = list(at = c("0", "1", "2"),
+                              labels = c("Not at risk", "At risk in some samples", "At risk")),
+  layer_fun = function(j, i, x, y, w, h, fill) {
+    # numbers: highest risk score of the participant
+    v <- pindex(score_ord, i, j)
+    grid.text(ifelse(is.na(v), "", sprintf("%.1f", v)), x, y, gp = gpar(fontsize = 6))
+  },
+  column_title = "PGMC at risk in plasma",
+  column_title_gp = gpar(fontsize = 11, fontface = "bold")
+)
+
+pdf(paste0(sig_dir, "PGMC_at_risk_heatmap_PLASMA.pdf"), width = 10,
+    height = max(5, 0.17 * nrow(status_chr) + 2.5))
+draw(ht_risk)
+dev.off()
+
+# PCA ofall samples with plasma and the proteins of each signature
+
+grp_cols <- c(CTR = "#6F8EB2", ALS = "#B2936F", PGMC = "#ad5291")
+
+# protein values with group and participant
+get_sig_data <- function(nm) {
+  sig_runs[[nm]]$results %>%
+    left_join(protein_data_IDs %>% select(SampleName, ParticipantCode, type), by = "SampleName") %>%
+    distinct() %>%
+    filter(type %in% c("ALS", "CTR", "PGMC")) %>%
+    as.data.frame()
+}
+
+# signatures with 2 or more proteins
+pca_sigs <- names(signatures)[lengths(signatures) >= 2]
+pca_scores <- list()
+pca_load <- list()
+for (nm in pca_sigs) {
+  prots <- signatures[[nm]]
+  d <- get_sig_data(nm)
+  d <- d[complete.cases(d[, prots]), ]
+  pca <- prcomp(d[, prots], center = TRUE, scale. = TRUE)
+  var_exp <- round(100 * pca$sdev^2 / sum(pca$sdev^2))
+  pca_scores[[nm]] <- data.frame(
+    sig_name = nm,
+    signature = paste0(nm, "\nPC1 ", var_exp[1], "%, PC2 ", var_exp[2], "%"),
+    pc1_lab = paste0("PC1 (", var_exp[1], "%)"),
+    pc2_lab = paste0("PC2 (", var_exp[2], "%)"),
+    pca$x[, 1:2], ParticipantCode = d$ParticipantCode, type = d$type)
+  pca_load[[nm]] <- data.frame(signature = nm, protein = prots,
+                               as.data.frame(pca$rotation[, 1:2]), row.names = NULL)
+}
+pca_df <- bind_rows(pca_scores)
+pca_df$type <- factor(pca_df$type, levels = c("CTR", "ALS", "PGMC"))
+pca_df$signature <- factor(pca_df$signature, levels = unique(pca_df$signature))
+
+loadings_tab <- bind_rows(pca_load)
+print(loadings_tab, digits = 2)   # which proteins drive PC1 and PC2
+write.csv(loadings_tab, paste0(sig_dir, "PCA_loadings_PLASMA.csv"), row.names = FALSE)
+
+# the plot of one PCA (or of all of them as panels)
+pca_plot <- function(df) {
+  conv <- df %>% filter(type == "PGMC", ParticipantCode %in% converted_ids)
+  ggplot(df, aes(x = PC1, y = PC2, color = type)) +
+    geom_point(data = df %>% filter(type != "PGMC"), size = 2, alpha = 0.6) +
+    geom_point(data = df %>% filter(type == "PGMC"), size = 2.8, alpha = 0.9) +
+    geom_point(data = conv, shape = 1, size = 5, color = "black", stroke = 0.8) +
+    ggrepel::geom_text_repel(data = conv, aes(label = ParticipantCode), color = "black",
+                             size = 3, max.overlaps = Inf) +
+    scale_color_manual(values = grp_cols, name = NULL) +
+    theme_classic(base_size = 12) +
+    theme(strip.background = element_blank(), strip.text = element_text(face = "bold"),
+          legend.position = "bottom")
+}
+
+# all the PCAs together, one panel per signature
+p_pca <- pca_plot(pca_df) +
+  facet_wrap(~signature, scales = "free", ncol = 2) 
+print(p_pca)
+ggsave(paste0(sig_dir, "PCA_signatures_PLASMA.pdf"), p_pca, width = 10, height = 9)
+
+# and one file per signature
+for (nm in pca_sigs) {
+  
+  d <- pca_df %>% filter(sig_name == nm)
+  p <- pca_plot(d) +
+    labs(x = d$pc1_lab[1], y = d$pc2_lab[1],
+         title = paste0("PCA of ", nm, " signature"))
+  print(p)
+  ggsave(paste0(sig_dir, "PCA_", gsub("[^A-Za-z0-9]+", "_", nm), "_PLASMA.pdf"), p, width = 6.5, height = 6)
+}
