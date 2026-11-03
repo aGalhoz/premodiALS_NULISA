@@ -237,12 +237,11 @@ column_split_fluid <- factor(model_fluid[colnames(selection_matrix)],
 
 visits <- c("V0", "V1", "V2", "V3")
 
-# participant label: ID + mutation
+# participant label
 mutation_lookup <- clinical_data_extra_heatmap %>%
   filter(!is.na(mutation)) %>%
   distinct(ParticipantCode, mutation)
 if (any(duplicated(mutation_lookup$ParticipantCode))) {
-  warning("More than one mutation found for at least one participant -- using the first.")
   mutation_lookup <- mutation_lookup %>% distinct(ParticipantCode, .keep_all = TRUE)
 }
 mutation_vec <- deframe(mutation_lookup)[rownames(selection_matrix)]
@@ -257,14 +256,14 @@ motor_mat <- sapply(visits, function(v) to_row_vec(get_visit_value("TotalMotorSi
 rownames(motor_mat) <- rownames(selection_matrix)
 colnames(motor_mat) <- visits
 
-# event markers (same logic as PGMC_motor_signs_per_visits.R)
+# event markers 
 visit_index <- function(v) match(v, visits)
 
 pgmc_visits <- clinical_data_extra_heatmap %>%
   filter(ParticipantCode %in% rownames(selection_matrix)) %>%
   mutate(vi = visit_index(Visit))
 
-# PHENOCONVERSION: first visit with a positive disease duration (diagnosis)
+# PHENOCONVERSION
 pheno_df <- pgmc_visits %>%
   filter(type == "PGMC", DiseaseOnset == "ALS", `Disease duration` > 0) %>%
   group_by(ParticipantCode) %>%
@@ -272,7 +271,7 @@ pheno_df <- pgmc_visits %>%
   ungroup() %>%
   select(ParticipantCode, vi)
 
-# MOTOR SIGNS POSITIVE: first visit with motor signs > 0 (not shown if it is the phenoconversion visit)
+# MOTOR SIGNS POSITIVE: first visit with motor signs > 0
 motor_pos_df <- pgmc_visits %>%
   filter(!is.na(TotalMotorSigns), TotalMotorSigns > 0, !is.na(vi)) %>%
   group_by(ParticipantCode) %>%
@@ -297,7 +296,7 @@ pheno_keys <- make_keys(pheno_df)
 pos_keys   <- make_keys(motor_pos_df)
 neg_keys   <- make_keys(motor_neg_df)
 
-# DEATH: deceased PGMC (date in LFUDeathDate); the marker sits at the right edge of the last visit
+# DEATH
 stopifnot(exists("disease_duration"))
 death_ids <- disease_duration %>%
   filter(type == "PGMC", !is.na(LFUDeathDate)) %>%
@@ -309,9 +308,6 @@ death_df <- pgmc_visits %>%
   slice_max(vi, n = 1, with_ties = FALSE) %>%
   ungroup() %>%
   select(ParticipantCode, vi)
-message("Death marker for: ", paste(sort(death_df$ParticipantCode), collapse = ", "))
-message("Deceased PGMC without visits in the heatmap: ",
-        paste(setdiff(as.character(death_ids), death_df$ParticipantCode), collapse = ", "))
 death_keys <- make_keys(death_df)
 
 # colours
