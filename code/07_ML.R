@@ -617,9 +617,7 @@ runML_with_elasticnet <- function(df_ml, cv = 5, bs_count = 500, seed = 123) {
   return(ml_results)
 }
 
-# =============================
 # Make ROC curve
-# =============================
 calculateROC <- function(ml_results,
                          plot_path = NULL,
                          positive_class = "X1",
@@ -758,7 +756,6 @@ calculateROC <- function(ml_results,
 
 # =============================
 # Plot feature importance
-# =============================
 feature_importance = function(ml_object, 
                               plot_path = "plots/protein_stability_selection.pdf", 
                               scale_importance = FALSE,
@@ -842,7 +839,6 @@ feature_importance = function(ml_object,
 
 # ====================================================
 # Check the best protein signature based on nested CV
-# ====================================================
 find_optimal_signature_CNS_IMMUNE <- function(data_all, 
                                               ranked_proteins, 
                                               fluid = "SERUM",
@@ -1124,11 +1120,9 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
         geom_point(data = filter(plot_data, type == "ALS"),
                    color = group_colors[["ALS"]], size = 1.2,
                    position = position_jitter(height = 0.08, width = 0, seed = 2)) +
-        # PGMC without a disease duration: unchanged
         geom_point(data = pgmc_nodur, color = group_colors[["PGMC"]], size = 1,
                    alpha = 0.45,
                    position = position_jitter(height = 0.08, width = 0, seed = 3)) +
-        # PGMC with disease duration: shorter duration = darker and bigger
         geom_point(data = pgmc_dur,
                    aes(color = `Months to conversion`, size = `Months to conversion`),
                    position = position_jitter(height = 0.08, width = 0, seed = 3)) +
@@ -1147,7 +1141,6 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
           point.padding = 0.5) +
         geom_vline(xintercept = 0, linetype = "dashed") +
         scale_fill_manual(values = group_colors, guide = "none") +
-        # low duration (= more relevant) -> dark colour and large point
         scale_color_gradient(low = "#3B0A2E", high = "#D9A6C8", breaks = dur_breaks,
                              name = "PGMC months from\nbaseline to conversion") +
         scale_size_continuous(range = c(3.5, 1.8), breaks = dur_breaks,
@@ -1182,7 +1175,6 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
 
 # =============================
 # Heatmap of protein signature
-# =============================
 run_heatmap_signature_CNS_IMMUNE <- function(
     data_all,
     fluid,
@@ -1193,8 +1185,6 @@ run_heatmap_signature_CNS_IMMUNE <- function(
     highlight_ids = NULL,
     panel_mode = "both"
 ) {
-  
-  message("Running heatmap for ", fluid)
   
   # heatmap data
   data_heatmap <- build_ml_dataset_type(data_all,
@@ -1383,7 +1373,6 @@ external_covariate_table <- build_external_covariate_table(MAXOMOD_IDs)
 
 ## =========================================================================
 ## PART 1: HEATMAPS -- one per fluid, rows split by panel (CNS vs Immune)
-## =========================================================================
 ## Save one heatmap per fluid into a single multi-page PDF
 fluids <- levels(all_data$SampleMatrixType)
 
@@ -1397,7 +1386,6 @@ dev.off()
 
 ## =========================================================================
 ## PART 2: PROTEINS COMMON TO BOTH PANELS
-## =========================================================================
 
 cns_ids    <- protein_data_IDs_CNS    %>% 
   filter(!Target %in% c("APOE4","APOE","CRP","KNG1")) %>% 
@@ -1414,7 +1402,6 @@ print(common_proteins)
 
 ## =========================================================================
 ## PART 3: BOXPLOTS -- CNS vs Immune NPQ, per common protein, per fluid
-## =========================================================================
 
 ## Subset to just the common proteins, for both panels
 common_data <- all_data %>%
@@ -1447,7 +1434,6 @@ ggsave(filename = "plots/CNS_IMMUNE_panels/common_protein_boxplots.pdf",
 
 ## ==========================================================
 ## PART 4: ML -- CNS and Immune panels together, per fluid
-## ==========================================================
 ## Find highly correlated protein pairs across the CNS and immune panels
 
 ## combined data of CNS and immune panels
@@ -2905,7 +2891,6 @@ fluid_boxplot_results$CSF$stats
 
 ################################################################################
 #### check for several signatures on plasma, on MAXOMOD
-# 1) NEFL only, 2) 10 proteins, 3) CNS + immune signature from plasma
 fluid <- "PLASMA"
 covs <- c("age", "sex_male")
 n_boot <- 100
@@ -2930,7 +2915,6 @@ ext_wide <- build_external_ml_dataset(external_all_data, fluid, "NPQ",
                                       panel_zscore_params = zparams)
 ext_wide <- as.data.frame(ext_wide)
 
-# columns have _CNS / _IMMUNE suffixes, so look up the right name
 get_cols <- function(prots) {
   sapply(prots, function(p) {
     hits <- intersect(c(p, paste0(p, c("_CNS", "_IMMUNE"))), names(train_df))
@@ -3030,7 +3014,7 @@ auc_table <- bind_rows(lapply(names(res), function(nm) {
 print(auc_table)
 write.csv(auc_table, paste0(out_dir, "AUC_MAXOMOD_", fluid, ".csv"), row.names = FALSE)
 
-# weights of the proteins in each model (model fitted on all discovery samples)
+# weights of the proteins in each model 
 weights_tab <- bind_rows(lapply(names(res), function(nm) {
   cf <- res[[nm]]$coefs_full
   cf <- cf[names(cf) %in% sigs[[nm]]]
@@ -3046,7 +3030,7 @@ for (nm in names(res)) {
 }
 write.csv(weights_tab, paste0(out_dir, "weights_", fluid, ".csv"), row.names = FALSE)
 
-# paired DeLong tests between models (same MAXOMOD samples)
+# paired DeLong tests between models 
 delong <- bind_rows(lapply(combn(names(res), 2, simplify = FALSE), function(pr) {
   a <- res[[pr[1]]]$full
   b <- res[[pr[2]]]$full
@@ -3071,7 +3055,7 @@ mod_cols <- setNames(c("#555555",   # dark grey
                        "#009E73",   # bluish green
                        "#CC79A7")[seq_along(sigs)], names(sigs))   # reddish purple
 
-# plot: weight of every protein in every model (bars side by side, same colours as the ROC plots)
+# weight of every protein in every model 
 plot_df <- weights_tab
 prot_order <- plot_df %>% group_by(protein) %>% 
   summarise(m = mean(weight)) %>% arrange(m) %>% pull(protein)
@@ -3123,11 +3107,11 @@ ggsave(paste0(out_dir, "ROC_MAXOMOD_comparison_", fluid, ".pdf"), p_roc,
        width = 7.5, height = 9, dpi = 300)
 
 
-# PGMC risk score in plasma with other signatures: NEFL only and Kim et al. (10 proteins)
+# PGMC risk score in plasma with other signatures
 sig_dir <- "plots/CNS_IMMUNE_panels/ML/Signatures/"
 dir.create(sig_dir, recursive = TRUE, showWarnings = FALSE)
 
-# column names in the plasma data (_CNS / _IMMUNE suffix, none if the two panels were merged)
+# column names in the plasma data 
 plasma_cols <- names(build_ml_dataset_type(all_data, "PLASMA", c("ALS", "CTR"), "NPQ", "ALS",
                                            covariate_table = covariate_table, panel_mode = "both"))
 find_cols <- function(prots) {
@@ -3149,7 +3133,7 @@ signatures <- list("NEFL only" = find_cols("NEFL"),
                    "Kim et al. (10 proteins)" = find_cols(kim_prots))
 print(signatures)
 
-# train on ALS vs CTR and score the PGMC (the 4-protein signature was already run)
+# train on ALS vs CTR and score the PGMC 
 sig_runs <- list()
 for (nm in setdiff(names(signatures), "4 proteins (Lasso, plasma)")) {
   folder <- paste0(sig_dir, gsub("[^A-Za-z0-9]+", "_", nm), "/")
@@ -3412,7 +3396,7 @@ loadings_tab <- bind_rows(pca_load)
 print(loadings_tab, digits = 2)   # which proteins drive PC1 and PC2
 write.csv(loadings_tab, paste0(sig_dir, "PCA_loadings_PLASMA.csv"), row.names = FALSE)
 
-# the plot of one PCA (or of all of them as panels)
+# the plot of one PCA 
 pca_plot <- function(df) {
   conv <- df %>% filter(type == "PGMC", ParticipantCode %in% converted_ids)
   ggplot(df, aes(x = PC1, y = PC2, color = type)) +
