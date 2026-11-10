@@ -380,8 +380,7 @@ validate_external <- function(cv_model, external_wide, proteins, covariate_cols,
   message("External validation AUC (", fluid_label, "): ",
           round(auc_val, 3), " (95% CI: ", round(ci_val[1], 3), "-", round(ci_val[3], 3), ")")
   
-  ## ------------------------------------------------------------------
-  ## ROC plot, styled consistently as calculateROC()
+  ## ROC plot
   p <- NULL
   if (!is.null(plot_path)) {
     
@@ -1401,7 +1400,7 @@ cat("Number of proteins common to both panels:", nrow(common_proteins), "\n")
 print(common_proteins)
 
 ## =========================================================================
-## PART 3: BOXPLOTS -- CNS vs Immune NPQ, per common protein, per fluid
+## PART 3: BOXPLOTS of CNS vs Immune NPQ, per common protein, per fluid
 
 ## Subset to just the common proteins, for both panels
 common_data <- all_data %>%
@@ -1433,7 +1432,7 @@ ggsave(filename = "plots/CNS_IMMUNE_panels/common_protein_boxplots.pdf",
   plot = ggsave_pages, width    = 14, height   = 16)
 
 ## ==========================================================
-## PART 4: ML -- CNS and Immune panels together, per fluid
+## PART 4: ML of CNS and Immune panels together, per fluid
 ## Find highly correlated protein pairs across the CNS and immune panels
 
 ## combined data of CNS and immune panels
@@ -1489,23 +1488,33 @@ plots <- imap(all_fluid_results, function(df, fluid_name) {
     geom_vline(xintercept = threshold, linetype = "dashed", color = "black") +
     scale_fill_manual(values = c("Low agreement" = "#D55E00", "High agreement" = "#0072B2")) +
     labs(
-      title = paste0("CNS vs Immune panel correlation — ", fluid_name),
-      subtitle = paste0("Dashed line = threshold (r = ", threshold, ")"),
-      x = "Pearson r (CNS vs Immune)",
+      title = fluid_name,
+      x = "Pearson r",
       y = NULL,
       fill = NULL
     ) +
-    theme_minimal(base_size = 18) +
-    theme(axis.text.y = element_text(size = 15))
+    theme_minimal(base_size = 14) +
+    theme(axis.text.y = element_text(size = 13))
   
   ggsave(
-    filename = paste0("plots/CNS_IMMUNE_panels/protein_correlation_", fluid_name, ".png"),
+    filename = paste0("plots/CNS_IMMUNE_panels/protein_correlation_", fluid_name, ".pdf"),
     plot = p,
-    width = 5, height = 6, dpi = 300, limitsize = FALSE
+    width = 8, height = 10, dpi = 300, limitsize = FALSE
   )
   
   p
 })
+
+fig_protein_cor_fluids = ggarrange(plots$SERUM, plots$PLASMA, plots$CSF, ncol = 3, nrow = 1,
+          labels = "AUTO",common.legend = TRUE,legend = "bottom")
+fig_protein_cor_fluids_annot = annotate_figure(fig_protein_cor_fluids,
+                top = text_grob("CNS vs Immune panel correlation"))
+
+ggsave(
+  filename = "plots/CNS_IMMUNE_panels/protein_correlation_all.pdf",
+  plot = fig_protein_cor_fluids_annot,
+  width = 15, height = 10, dpi = 300, limitsize = FALSE
+)
 
 ## ------------------------------------------------------------------
 ## ML of both CNS and immune panel together 
@@ -2874,7 +2883,7 @@ for (fl in c("SERUM", "PLASMA", "CSF")) {
     plot_external_signature_boxplots(
       external_all_data, fl,
       proteins = union_proteins,
-      panel_mode = "both",   # superset -- correctly resolves suffixed AND merged names
+      panel_mode = "both",  
       corr_lookup_discovery = get_both_corr_lookup(fl),
       covariate_table = external_covariate_table,
       plot_path = paste0("plots/ML/external_boxplots_", fl, "_all_signature_proteins.pdf")
