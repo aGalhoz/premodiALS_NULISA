@@ -2,6 +2,81 @@
 ### Helper Functions
 ###############################################
 
+if (!requireNamespace("svglite", quietly = TRUE)) install.packages("svglite")
+
+.svg_path <- function(pdf_path) sub("\\.pdf$", ".svg", pdf_path, ignore.case = TRUE)
+.is_pdf   <- function(path) grepl("\\.pdf$", path, ignore.case = TRUE)
+
+## remove files from a previous run so old pages never mix with new ones
+.svg_clean <- function(svg_path) {
+  base <- sub("\\.svg$", "", svg_path)
+  unlink(c(svg_path, Sys.glob(paste0(base, "_[0-9][0-9].svg"))))
+}
+## after drawing: a single page gets the plain name
+.svg_tidy <- function(svg_path) {
+  base  <- sub("\\.svg$", "", svg_path)
+  files <- Sys.glob(paste0(base, "_[0-9][0-9].svg"))
+  if (length(files) == 1) file.rename(files, svg_path)
+  invisible(NULL)
+}
+.svg_open <- function(svg_path, width, height) {
+  .svg_clean(svg_path)
+  svglite::svglite(sub("\\.svg$", "_%02d.svg", svg_path), width = width, height = height)
+}
+
+save_fig <- function(filename, plot = ggplot2::last_plot(), ...) {
+  args <- list(...)
+  ## 1) exactly what ggsave() did before
+  ggplot2::ggsave(filename = filename, plot = plot, ...)
+  ## 2) the same figure as SVG
+  if (.is_pdf(filename)) {
+    svg_path <- .svg_path(filename)
+    if (inherits(plot, "arrangelist")) {          # multi-page gridExtra::marrangeGrob
+      .svg_open(svg_path, args$width %||% 7, args$height %||% 7)
+      print(plot)
+      grDevices::dev.off()
+      .svg_tidy(svg_path)
+    } else {
+      .svg_clean(svg_path)
+      ggplot2::ggsave(filename = svg_path, plot = plot, device = "svg", ...)
+    }
+  }
+  invisible(filename)
+}
+
+with_fig <- function(path, expr, width = 7, height = 7, svg = TRUE, ...) {
+  expr <- substitute(expr)
+  env  <- parent.frame()
+  grDevices::pdf(path, width = width, height = height, ...)
+  tryCatch(eval(expr, env), finally = grDevices::dev.off())
+  if (svg && .is_pdf(path)) {
+    svg_path <- .svg_path(path)
+    .svg_open(svg_path, width, height)
+    tryCatch(eval(expr, env), finally = grDevices::dev.off())
+    .svg_tidy(svg_path)
+  }
+  invisible(path)
+}
+
+`%||%` <- function(a, b) if (is.null(a)) b else a
+
+## get oublic IDs
+pub_id <- function(x) {
+  x_chr <- trimws(as.character(x))
+  out   <- unname(id_lookup[x_chr])
+  miss  <- is.na(out) & !is.na(x_chr)
+  if (any(miss)) {
+    new <- setdiff(unique(x_chr[miss]), ls(.id_warned))
+    if (length(new) > 0) {
+      warning("No publication ID for: ", paste(new, collapse = ", "),
+              " - internal code shown instead.", call. = FALSE)
+      for (n in new) assign(n, TRUE, envir = .id_warned)
+    }
+    out[miss] <- x_chr[miss]
+  }
+  out
+}
+
 ## Build a protein x sample matrix of NPQ values for a given fluid,
 ## and a matching vector of panel labels (in the same row order)
 build_matrix_for_fluid <- function(data, fluid) {
@@ -70,11 +145,37 @@ plot_protein_boxplot <- function(data, uniprot_id) {
 }
 
 ## same-protein CNS vs Immune correlation for each fluid
+## Returns ALL proteins measured on both panels, not only well-correlated ones.
+## - Proteins are matched by name; where a UniProtID maps to exactly one Target in
+##   each panel but the two panels name it differently, they are matched by
+##   UniProtID and shown as "CNS name / IMMUNE name".
+## - Proteins whose r cannot be computed (no variance, too few paired samples) are
+##   kept with r = NA, so the barplot lists every common protein.
 correlate_panels_by_fluid <- function(data, fluid_name) {
   
   fluid_data <- data %>% filter(SampleMatrixType == fluid_name, panel %in% c("CNS", "IMMUNE"))
+  fluid_data$Target <- as.character(fluid_data$Target)
   
-  ## keep only proteins measured on both panels within this fluid
+  ## 1:1 UniProtID pairs that are named differently in the two panels
+  name_pairs <- fluid_data %>%
+    distinct(UniProtID, panel, Target) %>%
+    group_by(UniProtID, panel) %>% filter(n() == 1) %>% ungroup() %>%
+    pivot_wider(names_from = panel, values_from = Target)
+  if (all(c("CNS", "IMMUNE") %in% names(name_pairs))) {
+    name_pairs <- name_pairs %>% filter(!is.na(CNS), !is.na(IMMUNE), CNS != IMMUNE)
+  } else {
+    name_pairs <- tibble(CNS = character(), IMMUNE = character())
+  }
+  if (nrow(name_pairs) > 0) {
+    message(fluid_name, ": matched by UniProtID despite different names: ",
+            paste0(name_pairs$CNS, " / ", name_pairs$IMMUNE, collapse = ", "))
+    fluid_data <- fluid_data %>%
+      mutate(Target = ifelse(panel == "IMMUNE" & Target %in% name_pairs$IMMUNE,
+                             name_pairs$CNS[match(Target, name_pairs$IMMUNE)], Target))
+  }
+  display_names <- setNames(paste0(name_pairs$CNS, " / ", name_pairs$IMMUNE), name_pairs$CNS)
+  
+  ## every protein measured on both panels within this fluid
   shared_proteins <- fluid_data %>%
     distinct(Target, panel) %>%
     count(Target) %>%
@@ -93,21 +194,33 @@ correlate_panels_by_fluid <- function(data, fluid_name) {
     pivot_wider(names_from = panel, values_from = NPQ) %>%
     drop_na(CNS, IMMUNE)
   
-  protein_corr <- paired_data %>%
+  r_tab <- paired_data %>%
     group_by(Target) %>%
     summarise(
-      r = cor(CNS, IMMUNE, use = "pairwise.complete.obs", method = "pearson"),
+      r = suppressWarnings(cor(CNS, IMMUNE, use = "pairwise.complete.obs", method = "pearson")),
       n = n(),
       .groups = "drop"
+    )
+  
+  ## start from the full shared list so no protein is lost
+  protein_corr <- tibble(Target = shared_proteins) %>%
+    left_join(r_tab, by = "Target") %>%
+    mutate(
+      n = tidyr::replace_na(n, 0L),
+      r = ifelse(is.nan(r), NA_real_, r),
+      Target = ifelse(Target %in% names(display_names), unname(display_names[Target]), Target)
     ) %>%
-    filter(!is.na(r)) %>%
-    arrange(r) %>%
+    arrange(!is.na(r), r) %>%       # not computable first, then ascending r
     mutate(
       Target = factor(Target, levels = Target),
-      agreement = if_else(r < threshold, "Low agreement", "High agreement"),
+      agreement = case_when(is.na(r)       ~ "Not computable",
+                            r < threshold  ~ "Low agreement",
+                            TRUE           ~ "High agreement"),
       fluid = fluid_name
     )
   
+  message(fluid_name, ": ", nrow(protein_corr), " shared proteins in the correlation table (",
+          sum(is.na(protein_corr$r)), " with r not computable)")
   protein_corr
 }
 
@@ -415,7 +528,7 @@ validate_external <- function(cv_model, external_wide, proteins, covariate_cols,
         subtitle = paste0(auc_text, "  |  n = ", nrow(X_ext_scaled))
       )
     
-    ggsave(filename = plot_path, plot = p, width = 7, height = 7, dpi = 300)
+    save_fig(filename = plot_path, plot = p, width = 7, height = 7, dpi = 300)
     message("Saved external ROC plot to: ", plot_path)
   }
   
@@ -529,39 +642,39 @@ runML = function(data_frame,algorithm, cv = 10, BS_number = 100, seed = 123){
                                              .lambda = 10^seq(-4, 0, length.out = 20)),
                       penalty.factor = penalty_vec[names(train)[!names(train) == "status"]])
       }
-    
-    else if (algorithm == 'rf'){
-      tunegrid = expand.grid(
-        .mtry = c(2, 3, 4, 7, 11, 17, 27, floor(sqrt(n_features)), 41, 64, 99, 154, 237, 367, 567, 876),
-        .splitrule = c("extratrees","gini"),
-        .min.node.size = c(1,2,3,4,5)
-      )
       
-      model = train(x=train[ , !names(train) == "status"],
-                    y= train$status,
-                    tuneGrid = tunegrid, 
-                    method = "ranger",  tuneLength = 15, metric = "ROC",
-                    num.trees = 500,
-                    trControl = ctrl,
-                    importance = 'impurity'
-      )
-    }
-    
-    else if (algorithm == 'svm lin'){
-      model = train(x=train[ , !names(train) == "status"],
-                    y= train$status,
-                    method = "svmLinear", tuneLength = 5, metric = "ROC",
-                    trControl = ctrl,
-      )
-    }
-    
-    else if (algorithm == 'svm rad'){
-      model = train(x=train[ , !names(train) == "status"],
-                    y= train$status,
-                    method = "svmRadial", tuneLength = 5, metric = "ROC",
-                    trControl = ctrl,
-      )
-    }
+      else if (algorithm == 'rf'){
+        tunegrid = expand.grid(
+          .mtry = c(2, 3, 4, 7, 11, 17, 27, floor(sqrt(n_features)), 41, 64, 99, 154, 237, 367, 567, 876),
+          .splitrule = c("extratrees","gini"),
+          .min.node.size = c(1,2,3,4,5)
+        )
+        
+        model = train(x=train[ , !names(train) == "status"],
+                      y= train$status,
+                      tuneGrid = tunegrid, 
+                      method = "ranger",  tuneLength = 15, metric = "ROC",
+                      num.trees = 500,
+                      trControl = ctrl,
+                      importance = 'impurity'
+        )
+      }
+      
+      else if (algorithm == 'svm lin'){
+        model = train(x=train[ , !names(train) == "status"],
+                      y= train$status,
+                      method = "svmLinear", tuneLength = 5, metric = "ROC",
+                      trControl = ctrl,
+        )
+      }
+      
+      else if (algorithm == 'svm rad'){
+        model = train(x=train[ , !names(train) == "status"],
+                      y= train$status,
+                      method = "svmRadial", tuneLength = 5, metric = "ROC",
+                      trControl = ctrl,
+        )
+      }
       list(model = model, imp = varImp(model))
     }, error = function(e) {
       message("Bootstrap iteration ", i, " FAILED and was skipped. Reason: ", conditionMessage(e))
@@ -736,7 +849,7 @@ calculateROC <- function(ml_results,
     ) 
   
   if (!is.null(plot_path)) {
-    ggsave(filename = plot_path, plot = p, width = 8, height = 7, dpi = 300)
+    save_fig(filename = plot_path, plot = p, width = 8, height = 7, dpi = 300)
   }
   
   # Return
@@ -827,9 +940,9 @@ feature_importance = function(ml_object,
     )
   
   if (!isFALSE(plot_path)) {
-    pdf(plot_path, paper = "a4r", width = 11, height = 8)
-    print(p)
-    dev.off()
+    with_fig(plot_path, width = 11, height = 8, paper = "a4r", expr = {
+      print(p)
+    })
     message("Plot saved to ", plot_path)
   }
   
@@ -961,8 +1074,8 @@ find_optimal_signature_CNS_IMMUNE <- function(data_all,
       y = "Cross-validated AUC (mean ± SE)"
     )
   
-  ggsave(paste0(output_prefix, "protein_signature_", fluid, ".pdf"),
-         p, width = 8, height = 6)
+  save_fig(paste0(output_prefix, "protein_signature_", fluid, ".pdf"),
+           p, width = 8, height = 6)
   
   return(list(
     optimal_n = best_n,
@@ -1078,7 +1191,7 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
       left_join(samples_ID_type %>% rename(SampleName = `Sample ID`)) %>%
       mutate(type = factor(type, levels = c("ALS","PGMC","CTR")),
              label = ifelse(type == "PGMC" & ALS_risk_score > 0,
-                            ParticipantCode, NA))
+                            pub_id(ParticipantCode), NA))
     
     # Disease duration of the PGMC 
     join_key_cands <- intersect(c("PatientID", "ParticipantCode"), names(disease_duration))
@@ -1095,7 +1208,7 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
       # use the absolute value = months from baseline until conversion
       mutate(`Months to conversion` = abs(`Disease duration`),
              label = ifelse(!is.na(`Months to conversion`),
-                            paste0(ParticipantCode, " (", round(`Months to conversion`, 1), " mo)"),
+                            paste0(pub_id(ParticipantCode), " (", round(`Months to conversion`, 1), " mo)"),
                             label))
     
     group_colors <- c("CTR"="#6F8EB2","ALS"="#B2936F","PGMC"="#ad5291")
@@ -1107,59 +1220,59 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
     dur_breaks <- sort(unique(round(pgmc_dur$`Months to conversion`, 1)))
     if (length(dur_breaks) == 0) dur_breaks <- ggplot2::waiver()
     
-    pdf(paste0(output_prefix, "ALS_risk_score_",fluid,".pdf"), height = 5, width = 8)
-    
-    print(
-      ggplot(plot_data, aes(x = ALS_risk_score, y = type, fill = type)) +
-        geom_violin(trim = FALSE, alpha = 0.4) +
-        # CTR and ALS: fixed colour and size, as before
-        geom_point(data = filter(plot_data, type == "CTR"),
-                   color = group_colors[["CTR"]], size = 1.2,
-                   position = position_jitter(height = 0.08, width = 0, seed = 1)) +
-        geom_point(data = filter(plot_data, type == "ALS"),
-                   color = group_colors[["ALS"]], size = 1.2,
-                   position = position_jitter(height = 0.08, width = 0, seed = 2)) +
-        geom_point(data = pgmc_nodur, color = group_colors[["PGMC"]], size = 1,
-                   alpha = 0.45,
-                   position = position_jitter(height = 0.08, width = 0, seed = 3)) +
-        geom_point(data = pgmc_dur,
-                   aes(color = `Months to conversion`, size = `Months to conversion`),
-                   position = position_jitter(height = 0.08, width = 0, seed = 3)) +
-        geom_point(data = pgmc_dur,
-                   aes(size = `Months to conversion`), shape = 1, stroke = 1,
-                   color = "black",
-                   position = position_jitter(height = 0.08, width = 0, seed = 3)) +
-        ggrepel::geom_text_repel(
-          data = plot_data %>% filter(!is.na(label)),
-          aes(label = label),
-          size = 3,
-          segment.color = "black",
-          max.overlaps = 50,
-          direction = "y",
-          box.padding = 0.6,
-          point.padding = 0.5) +
-        geom_vline(xintercept = 0, linetype = "dashed") +
-        scale_fill_manual(values = group_colors, guide = "none") +
-        scale_color_gradient(low = "#3B0A2E", high = "#D9A6C8", breaks = dur_breaks,
-                             name = "PGMC months from\nbaseline to conversion") +
-        scale_size_continuous(range = c(3.5, 1.8), breaks = dur_breaks,
-                              name = "PGMC months from\nbaseline to conversion") +
-        guides(color = guide_legend(), size = guide_legend()) +
-        theme_classic(base_size = 12) +
-        theme(
-          axis.line = element_line(size = 0.4),
-          axis.ticks = element_line(size = 0.3),
-          axis.text = element_text(color = "black"),
-          axis.title = element_text(size = 12),
-          plot.title = element_text(size = 13, face = "bold"),
-          legend.position = "right"
-        ) +
-        labs(
-          x = "ALS Risk Score",
-          y = NULL,
-          title = paste0("ALS risk score (", model_type, ", ", fluid, ")")))
-    
-    dev.off()
+    with_fig(paste0(output_prefix, "ALS_risk_score_",fluid,".pdf"), height = 5, width = 8, expr = {
+      
+      print(
+        ggplot(plot_data, aes(x = ALS_risk_score, y = type, fill = type)) +
+          geom_violin(trim = FALSE, alpha = 0.4) +
+          # CTR and ALS: fixed colour and size, as before
+          geom_point(data = filter(plot_data, type == "CTR"),
+                     color = group_colors[["CTR"]], size = 1.2,
+                     position = position_jitter(height = 0.08, width = 0, seed = 1)) +
+          geom_point(data = filter(plot_data, type == "ALS"),
+                     color = group_colors[["ALS"]], size = 1.2,
+                     position = position_jitter(height = 0.08, width = 0, seed = 2)) +
+          geom_point(data = pgmc_nodur, color = group_colors[["PGMC"]], size = 1,
+                     alpha = 0.45,
+                     position = position_jitter(height = 0.08, width = 0, seed = 3)) +
+          geom_point(data = pgmc_dur,
+                     aes(color = `Months to conversion`, size = `Months to conversion`),
+                     position = position_jitter(height = 0.08, width = 0, seed = 3)) +
+          geom_point(data = pgmc_dur,
+                     aes(size = `Months to conversion`), shape = 1, stroke = 1,
+                     color = "black",
+                     position = position_jitter(height = 0.08, width = 0, seed = 3)) +
+          ggrepel::geom_text_repel(
+            data = plot_data %>% filter(!is.na(label)),
+            aes(label = label),
+            size = 3,
+            segment.color = "black",
+            max.overlaps = 50,
+            direction = "y",
+            box.padding = 0.6,
+            point.padding = 0.5) +
+          geom_vline(xintercept = 0, linetype = "dashed") +
+          scale_fill_manual(values = group_colors, guide = "none") +
+          scale_color_gradient(low = "#3B0A2E", high = "#D9A6C8", breaks = dur_breaks,
+                               name = "PGMC months from\nbaseline to conversion") +
+          scale_size_continuous(range = c(3.5, 1.8), breaks = dur_breaks,
+                                name = "PGMC months from\nbaseline to conversion") +
+          guides(color = guide_legend(), size = guide_legend()) +
+          theme_classic(base_size = 12) +
+          theme(
+            axis.line = element_line(size = 0.4),
+            axis.ticks = element_line(size = 0.3),
+            axis.text = element_text(color = "black"),
+            axis.title = element_text(size = 12),
+            plot.title = element_text(size = 13, face = "bold"),
+            legend.position = "right"
+          ) +
+          labs(
+            x = "Calculated closeness to phenoconversion\n(ALS vs CTR model score; 0 = decision boundary)",
+            y = NULL,
+            title = paste0("Calculated closeness to phenoconversion (", model_type, ", ", fluid, ")")))
+      
+    })
   }
   
   return(list(
@@ -1252,7 +1365,7 @@ run_heatmap_signature_CNS_IMMUNE <- function(
   # row annotations
   ha <- rowAnnotation(
     Group = data_heatmap$type,
-    ALS_score = data_heatmap$ALS_risk_score,
+    Closeness = data_heatmap$ALS_risk_score,
     IDs_interest = ifelse(data_heatmap$ParticipantCode %in% highlight_ids,
                           "yes","no"),
     Disease_onset = data_heatmap$SiteDiseaseOnset,
@@ -1264,7 +1377,7 @@ run_heatmap_signature_CNS_IMMUNE <- function(
     na_col = "white",
     col = list(
       Group = group_colors,
-      ALS_score = score_col,
+      Closeness = score_col,
       Disease_onset = c("spinal"="#3498db",
                         "bulbar"="#e74c3c",
                         "other"="grey"),
@@ -1285,37 +1398,39 @@ run_heatmap_signature_CNS_IMMUNE <- function(
   )
   
   # clustered
-  pdf(paste0(output_prefix, "_clustered.pdf"), height = 14)
-  print(
-    Heatmap(
-      mat_scaled,
-      name = "Z-score",
-      left_annotation = ha,
-      cluster_rows = TRUE,
-      cluster_columns = TRUE,
-      show_row_names = TRUE,
-      show_column_names = TRUE,
-      col = colorRamp2(c(-2,0,2), c("blue","white","red"))
+  with_fig(paste0(output_prefix, "_clustered.pdf"), height = 14, expr = {
+    print(
+      Heatmap(
+        mat_scaled,
+        name = "Z-score",
+        left_annotation = ha,
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_row_names = TRUE,
+        row_labels = pub_id(rownames(mat_scaled)),   # publication IDs (display only)
+        show_column_names = TRUE,
+        col = colorRamp2(c(-2,0,2), c("blue","white","red"))
+      )
     )
-  )
-  dev.off()
+  })
   
   # grouped
-  pdf(paste0(output_prefix, "_grouped.pdf"), height = 14)
-  print(
-    Heatmap(
-      mat_scaled,
-      name = "Z-score",
-      left_annotation = ha,
-      row_split = data_heatmap$type,
-      cluster_rows = TRUE,
-      cluster_columns = TRUE,
-      show_row_names = TRUE,
-      show_column_names = TRUE,
-      col = colorRamp2(c(-2,0,2), c("blue","white","red"))
+  with_fig(paste0(output_prefix, "_grouped.pdf"), height = 14, expr = {
+    print(
+      Heatmap(
+        mat_scaled,
+        name = "Z-score",
+        left_annotation = ha,
+        row_split = data_heatmap$type,
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_row_names = TRUE,
+        row_labels = pub_id(rownames(mat_scaled)),   # publication IDs (display only)
+        show_column_names = TRUE,
+        col = colorRamp2(c(-2,0,2), c("blue","white","red"))
+      )
     )
-  )
-  dev.off()
+  })
   
   return(data_heatmap)
 }
@@ -1344,7 +1459,9 @@ all_data <- bind_rows(protein_data_IDs_CNS, proteins_data_IDs_immune) %>%
     SampleMatrixType = factor(SampleMatrixType, levels = c("SERUM", "PLASMA", "CSF"))
   ) %>%
   filter(!is.na(NPQ)) %>%
-  filter(!Target %in% c("APOE4","APOE","CRP","KNG1"))
+  filter(!(SampleMatrixType == "CSF" & panel == "CNS" & Target %in% c("APOE", "CRP")) &
+           !(SampleMatrixType == "CSF" & panel == "IMMUNE" & Target %in% c("CRP", "KNG1")))
+
 
 ## External dataset: MAXOMOD NULISA
 MAXOMOD_NULISA_CNS = read_excel("~/Documents/HMGU/premodiALS/MAXOMOD NULISA data/P005_BSHRI_NULISAseq_CNSDiseasePanel_NPQCounts_2025_03_10.xlsx")
@@ -1371,26 +1488,27 @@ external_covariate_table <- build_external_covariate_table(MAXOMOD_IDs)
 
 
 ## =========================================================================
-## PART 1: HEATMAPS -- one per fluid, rows split by panel (CNS vs Immune)
+## PART 1: HEATMAPS 
 ## Save one heatmap per fluid into a single multi-page PDF
 fluids <- levels(all_data$SampleMatrixType)
 
-pdf("plots/CNS_IMMUNE_panels/heatmaps_by_fluid.pdf", width = 10, height = 12)
-for (fl in fluids) {
-  if (nrow(filter(all_data, SampleMatrixType == fl)) == 0) next
-  ht <- make_fluid_heatmap(all_data, fl)
-  draw(ht)
-}
-dev.off()
+with_fig("plots/CNS_IMMUNE_panels/heatmaps_by_fluid.pdf", width = 10, height = 12, expr = {
+  for (fl in fluids) {
+    if (nrow(filter(all_data, SampleMatrixType == fl)) == 0) next
+    ht <- make_fluid_heatmap(all_data, fl)
+    draw(ht)
+  }
+})
 
 ## =========================================================================
 ## PART 2: PROTEINS COMMON TO BOTH PANELS
 
-cns_ids    <- protein_data_IDs_CNS    %>% 
-  filter(!Target %in% c("APOE4","APOE","CRP","KNG1")) %>% 
+cns_ids <- protein_data_IDs_CNS %>%
+  filter(!(SampleMatrixType == "CSF" & Target %in% c("APOE", "CRP"))) %>%
   distinct(UniProtID, Target)
-immune_ids <- proteins_data_IDs_immune  %>% 
-  filter(!Target %in% c("APOE4","APOE","CRP","KNG1")) %>% 
+
+immune_ids <- proteins_data_IDs_immune %>%
+  filter(!(SampleMatrixType == "CSF" & Target %in% c("CRP", "KNG1"))) %>%
   distinct(UniProtID, Target)
 
 ## Proteins measured in both panels (matched by UniProtID)
@@ -1428,8 +1546,8 @@ ggsave_pages <- marrangeGrob(
   top   = NULL
 )
 
-ggsave(filename = "plots/CNS_IMMUNE_panels/common_protein_boxplots.pdf",
-  plot = ggsave_pages, width    = 14, height   = 16)
+save_fig(filename = "plots/CNS_IMMUNE_panels/common_protein_boxplots.pdf",
+         plot = ggsave_pages, width    = 14, height   = 16)
 
 ## ==========================================================
 ## PART 4: ML of CNS and Immune panels together, per fluid
@@ -1480,40 +1598,51 @@ all_fluid_results <- map(fluids, ~ correlate_panels_by_fluid(common_data, .x)) %
 all_fluid_corr <- bind_rows(all_fluid_results)
 write_csv(all_fluid_corr, "results/protein_CNS_vs_Immune_correlation_by_fluid.csv")
 
-# correlation plots per fluid
+# correlation plots per fluid - ALL shared proteins
+message("Proteins common to both panels (UniProtID-based, ", nrow(common_proteins), "): ",
+        "compare with the per-fluid counts above.")
+
+# figure height and label size follow the number of proteins, so every label stays readable
+n_max <- max(vapply(all_fluid_results, nrow, integer(1)))
+cor_label_size <- if (n_max > 60) 7 else if (n_max > 35) 9 else 13
+cor_height     <- max(10, 0.16 * n_max + 2)
+
 plots <- imap(all_fluid_results, function(df, fluid_name) {
   
   p <- ggplot(df, aes(x = r, y = Target, fill = agreement)) +
-    geom_col() +
+    geom_col(na.rm = TRUE) +
     geom_vline(xintercept = threshold, linetype = "dashed", color = "black") +
-    scale_fill_manual(values = c("Low agreement" = "#D55E00", "High agreement" = "#0072B2")) +
+    scale_fill_manual(values = c("Low agreement" = "#D55E00", "High agreement" = "#0072B2",
+                                 "Not computable" = "grey70"),
+                      limits = c("High agreement", "Low agreement", "Not computable")) +
+    scale_y_discrete(drop = FALSE) +
     labs(
-      title = fluid_name,
+      title = paste0(fluid_name, " (", nrow(df), " proteins)"),
       x = "Pearson r",
       y = NULL,
       fill = NULL
     ) +
     theme_minimal(base_size = 14) +
-    theme(axis.text.y = element_text(size = 13))
+    theme(axis.text.y = element_text(size = cor_label_size))
   
-  ggsave(
+  save_fig(
     filename = paste0("plots/CNS_IMMUNE_panels/protein_correlation_", fluid_name, ".pdf"),
     plot = p,
-    width = 8, height = 10, dpi = 300, limitsize = FALSE
+    width = 8, height = cor_height, dpi = 300, limitsize = FALSE
   )
   
   p
 })
 
 fig_protein_cor_fluids = ggarrange(plots$SERUM, plots$PLASMA, plots$CSF, ncol = 3, nrow = 1,
-          labels = "AUTO",common.legend = TRUE,legend = "bottom")
+                                   labels = "AUTO",common.legend = TRUE,legend = "bottom")
 fig_protein_cor_fluids_annot = annotate_figure(fig_protein_cor_fluids,
-                top = text_grob("CNS vs Immune panel correlation"))
+                                               top = text_grob("CNS vs Immune panel correlation"))
 
-ggsave(
+save_fig(
   filename = "plots/CNS_IMMUNE_panels/protein_correlation_all.pdf",
   plot = fig_protein_cor_fluids_annot,
-  width = 15, height = 10, dpi = 300, limitsize = FALSE
+  width = 15, height = cor_height, dpi = 300, limitsize = FALSE
 )
 
 ## ------------------------------------------------------------------
@@ -1549,24 +1678,24 @@ for (fluid in fluids) {
   lm_PGMC_CTR <- runML_with_lasso(protein_data_PGMCvsCTR_new, bs_count = 500)
   final_roc_plot_PGMC_CTR <- calculateROC(lm_PGMC_CTR,
                                           paste0("plots/CNS_IMMUNE_panels/ML/Lasso/ROC_lm_CNS_IMMUNE_", fluid, "_PGMC_CTR.pdf"))
-
+  
   lm_ALS_CTR <- runML_with_lasso(protein_data_ALSvsCTR_new, bs_count = 500)
   final_roc_plot_ALS_CTR <- calculateROC(lm_ALS_CTR,
                                          paste0("plots/CNS_IMMUNE_panels/ML/Lasso/ROC_lm_CNS_IMMUNE_", fluid, "_ALS_CTR.pdf"))
-
+  
   lm_ALS_PGMC <- runML_with_lasso(protein_data_ALSvsPGMC_new, bs_count = 500)
   final_roc_plot_ALS_PGMC <- calculateROC(lm_ALS_PGMC,
                                           paste0("plots/CNS_IMMUNE_panels/ML/Lasso/ROC_lm_CNS_IMMUNE_", fluid, "_ALS_PGMC.pdf"))
-
+  
   ## Extract weights + plot averaged
   lm_weights_PGMC_CTR <- feature_importance(lm_PGMC_CTR,
                                             plot_path = paste0("plots/CNS_IMMUNE_panels/ML/Lasso/protein_selection_CNS_IMMUNE_", fluid, "_PGMC_CTR.pdf"))
   write_xlsx(lm_weights_PGMC_CTR, path = paste0("results/weights_lm_CNS_IMMUNE_", fluid, "_PGMC_CTR.xlsx"))
-
+  
   lm_weights_ALS_CTR <- feature_importance(lm_ALS_CTR,
                                            plot_path = paste0("plots/CNS_IMMUNE_panels/ML/Lasso/protein_selection_CNS_IMMUNE_", fluid, "_ALS_CTR.pdf"))
   write_xlsx(lm_weights_ALS_CTR, path = paste0("results/weights_lm_CNS_IMMUNE_", fluid, "_ALS_CTR.xlsx"))
-
+  
   lm_weights_ALS_PGMC <- feature_importance(lm_ALS_PGMC,
                                             plot_path = paste0("plots/CNS_IMMUNE_panels/ML/Lasso/protein_selection_CNS_IMMUNE_", fluid, "_ALS_PGMC.pdf"))
   write_xlsx(lm_weights_ALS_PGMC, path = paste0("results/weights_lm_CNS_IMMUNE_", fluid, "_ALS_PGMC.xlsx"))
@@ -1601,52 +1730,52 @@ proteins_serum_ALS_CTR = c("NEFL_CNS","pTau-181_CNS","BASP1_CNS","CLEC4A_IMMUNE"
                            "ACHE_CNS","CXCL14_IMMUNE","HAVCR1_IMMUNE","SELE_IMMUNE",
                            "TNFRSF13C_IMMUNE","GDNF_CNS","NGF_CNS")
 lasso_optimal_protein_signature_serum_both = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                      "SERUM", 
-                                                                                                      c("ALS",  "CTR"), 
-                                                                                                      "NPQ", "ALS",
-                                                                                                      covariate_table),
-                                                               ranked_proteins = proteins_serum_ALS_CTR,
-                                                               fluid = "SERUM",
-                                                               output_prefix = "plots/CNS_IMMUNE_panels/ML/Lasso/performance_")
+                                                                                                           "SERUM", 
+                                                                                                           c("ALS",  "CTR"), 
+                                                                                                           "NPQ", "ALS",
+                                                                                                           covariate_table),
+                                                                               ranked_proteins = proteins_serum_ALS_CTR,
+                                                                               fluid = "SERUM",
+                                                                               output_prefix = "plots/CNS_IMMUNE_panels/ML/Lasso/performance_")
 
 ## -> Lasso + Plasma
 proteins_plasma_ALS_CTR = c("NEFL_CNS","pTau-181_CNS","TEK_CNS","TNFSF9_IMMUNE",
                             "IL1B_CNS","CD3E_IMMUNE","GDNF_CNS","CXCL14_IMMUNE",
                             "VSNL1_CNS","TNFRSF13C_IMMUNE","TSLP_IMMUNE")
 lasso_optimal_protein_signature_plasma_both = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                      "PLASMA", 
-                                                                                                      c("ALS",  "CTR"), 
-                                                                                                      "NPQ", "ALS",
-                                                                                                      covariate_table),
-                                                                          ranked_proteins = proteins_plasma_ALS_CTR,
-                                                                          fluid = "PLASMA",
-                                                                          output_prefix = "plots/CNS_IMMUNE_panels/ML/Lasso/performance_")
+                                                                                                            "PLASMA", 
+                                                                                                            c("ALS",  "CTR"), 
+                                                                                                            "NPQ", "ALS",
+                                                                                                            covariate_table),
+                                                                                ranked_proteins = proteins_plasma_ALS_CTR,
+                                                                                fluid = "PLASMA",
+                                                                                output_prefix = "plots/CNS_IMMUNE_panels/ML/Lasso/performance_")
 
 # Elastic Net + Serum
 proteins_serum_ALS_CTR = c("NEFL_CNS","pTau-181_CNS","CLEC4A_IMMUNE","GDNF_CNS",
                            "HAVCR1_IMMUNE","BASP1_CNS","TNFRSF13C_IMMUNE","SELE_IMMUNE",
                            "pTau-231_CNS","CXCL14_IMMUNE","ACHE_CNS")
 enet_optimal_protein_signature_serum_both = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                     "SERUM", 
-                                                                                                     c("ALS",  "CTR"), 
-                                                                                                     "NPQ", "ALS",
-                                                                                                     covariate_table),
-                                                              ranked_proteins = proteins_serum_ALS_CTR,
-                                                              fluid = "SERUM",
-                                                              output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/performance_")
+                                                                                                          "SERUM", 
+                                                                                                          c("ALS",  "CTR"), 
+                                                                                                          "NPQ", "ALS",
+                                                                                                          covariate_table),
+                                                                              ranked_proteins = proteins_serum_ALS_CTR,
+                                                                              fluid = "SERUM",
+                                                                              output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/performance_")
 
 # Elastic Net + Plasma
 proteins_plasma_ALS_CTR = c("NEFL_CNS","pTau-181_CNS","TEK_CNS","IL1B_CNS","TNFRSF9_IMMUNE",
                             "CD3E_IMMUNE","GDNF_CNS","CXCL14_IMMUNE","VSNL1_CNS",
                             "CCL25_IMMUNE","IL1RL1_IMMUNE")
 enet_optimal_protein_signature_plasma_both = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                      "PLASMA", 
-                                                                                                      c("ALS",  "CTR"), 
-                                                                                                      "NPQ", "ALS",
-                                                                                                      covariate_table),
-                                                               ranked_proteins = proteins_plasma_ALS_CTR,
-                                                               fluid = "PLASMA",
-                                                               output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/performance_")
+                                                                                                           "PLASMA", 
+                                                                                                           c("ALS",  "CTR"), 
+                                                                                                           "NPQ", "ALS",
+                                                                                                           covariate_table),
+                                                                               ranked_proteins = proteins_plasma_ALS_CTR,
+                                                                               fluid = "PLASMA",
+                                                                               output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/performance_")
 
 # Elastic Net + CSF
 proteins_CSF_ALS_CTR =  c("NEFL_CNS","NEFH_CNS","CCL13_CNS","TNFRSF13C_IMMUNE",
@@ -1655,13 +1784,13 @@ proteins_CSF_ALS_CTR =  c("NEFL_CNS","NEFH_CNS","CCL13_CNS","TNFRSF13C_IMMUNE",
                           "IL33_IMMUNE")
 
 enet_optimal_protein_signature_CSF_both = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                   "CSF", 
-                                                                                                   c("ALS",  "CTR"), 
-                                                                                                   "NPQ", "ALS",
-                                                                                                   covariate_table),
-                                                            ranked_proteins = proteins_CSF_ALS_CTR,
-                                                            fluid = "CSF",
-                                                            output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/performance_")
+                                                                                                        "CSF", 
+                                                                                                        c("ALS",  "CTR"), 
+                                                                                                        "NPQ", "ALS",
+                                                                                                        covariate_table),
+                                                                            ranked_proteins = proteins_CSF_ALS_CTR,
+                                                                            fluid = "CSF",
+                                                                            output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/performance_")
 
 # ====================================================
 # Compute an ALS risk score based on ALS vs CTR model 
@@ -1669,10 +1798,10 @@ enet_optimal_protein_signature_CSF_both = find_optimal_signature_CNS_IMMUNE(data
 proteins_serum_ALS_CTR_both = lasso_optimal_protein_signature_serum_both$optimal_proteins
 
 lasso_PGMC_serum_signature_both = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                        proteins_serum_ALS_CTR_both,
-                                                        fluid = "SERUM",
-                                                        model_type = "lasso",
-                                                        output_prefix = "plots/CNS_IMMUNE_panels/ML/Lasso/")
+                                                                        proteins_serum_ALS_CTR_both,
+                                                                        fluid = "SERUM",
+                                                                        model_type = "lasso",
+                                                                        output_prefix = "plots/CNS_IMMUNE_panels/ML/Lasso/")
 
 external_lasso_serum_wide_both <- build_external_ml_dataset(
   external_all_data, "SERUM", "NPQ",
@@ -1707,21 +1836,21 @@ group_colors <- c(
   "PGMC" = "#ad5291")
 
 run_heatmap_signature_CNS_IMMUNE(all_data,
-                      "SERUM",
-                      lasso_optimal_protein_signature_serum_both$optimal_proteins,
-                      lasso_PGMC_serum_signature_both$results,
-                      group_colors = group_colors,
-                      output_prefix = "plots/CNS_IMMUNE_panels/ML/Lasso/heatmap_SERUM",
-                      highlight_ids = participant_code_label)
+                                 "SERUM",
+                                 lasso_optimal_protein_signature_serum_both$optimal_proteins,
+                                 lasso_PGMC_serum_signature_both$results,
+                                 group_colors = group_colors,
+                                 output_prefix = "plots/CNS_IMMUNE_panels/ML/Lasso/heatmap_SERUM",
+                                 highlight_ids = participant_code_label)
 
 ## -> Lasso + plasma
 proteins_plasma_ALS_CTR_both = lasso_optimal_protein_signature_plasma_both$optimal_proteins
 
 lasso_PGMC_plasma_signature_both = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                                   proteins_plasma_ALS_CTR_both,
-                                                                   fluid = "PLASMA",
-                                                                   model_type = "lasso",
-                                                                   output_prefix = "plots/CNS_IMMUNE_panels/ML/Lasso/")
+                                                                         proteins_plasma_ALS_CTR_both,
+                                                                         fluid = "PLASMA",
+                                                                         model_type = "lasso",
+                                                                         output_prefix = "plots/CNS_IMMUNE_panels/ML/Lasso/")
 
 external_lasso_plasma_wide_both <- build_external_ml_dataset(
   external_all_data, "PLASMA", "NPQ",
@@ -1769,10 +1898,10 @@ run_heatmap_signature_CNS_IMMUNE(all_data,
 
 ## -> Elastic Net + Serum
 EN_PGMC_serum_signature_both = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                     enet_optimal_protein_signature_serum_both$optimal_proteins,
-                                                     fluid = "SERUM",
-                                                     model_type = "elastic_net",
-                                                     output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/")
+                                                                     enet_optimal_protein_signature_serum_both$optimal_proteins,
+                                                                     fluid = "SERUM",
+                                                                     model_type = "elastic_net",
+                                                                     output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/")
 
 external_enet_serum_wide_both <- build_external_ml_dataset(
   external_all_data, "SERUM", "NPQ",
@@ -1803,19 +1932,19 @@ participant_code_label = EN_PGMC_serum_signature_both$results %>%
 # Unsupervised visualisation (heatmap) of PGMC, ALS, CTR based on 9-protein signature
 
 run_heatmap_signature_CNS_IMMUNE(all_data,
-                      "SERUM",
-                      enet_optimal_protein_signature_serum_both$optimal_proteins,
-                      EN_PGMC_serum_signature_both$results,
-                      group_colors = group_colors,
-                      output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/heatmap_SERUM",
-                      highlight_ids = participant_code_label)
+                                 "SERUM",
+                                 enet_optimal_protein_signature_serum_both$optimal_proteins,
+                                 EN_PGMC_serum_signature_both$results,
+                                 group_colors = group_colors,
+                                 output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/heatmap_SERUM",
+                                 highlight_ids = participant_code_label)
 
 ## -> Elastic Net + Plasma
 EN_PGMC_plasma_signature_both = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                      enet_optimal_protein_signature_plasma_both$optimal_proteins,
-                                                      fluid = "PLASMA",
-                                                      model_type = "elastic_net",
-                                                      output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/")
+                                                                      enet_optimal_protein_signature_plasma_both$optimal_proteins,
+                                                                      fluid = "PLASMA",
+                                                                      model_type = "elastic_net",
+                                                                      output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/")
 
 external_enet_plasma_wide_both <- build_external_ml_dataset(
   external_all_data, "PLASMA", "NPQ",
@@ -1846,19 +1975,19 @@ participant_code_label = EN_PGMC_plasma_signature_both$results %>%
 # Unsupervised visualisation (heatmap) of PGMC, ALS, CTR based on 3-protein signature
 
 run_heatmap_signature_CNS_IMMUNE(all_data,
-                      "PLASMA",
-                      enet_optimal_protein_signature_plasma_both$optimal_proteins,
-                      EN_PGMC_plasma_signature_both$results,
-                      group_colors = group_colors,
-                      output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/heatmap_PLASMA",
-                      highlight_ids = participant_code_label)
+                                 "PLASMA",
+                                 enet_optimal_protein_signature_plasma_both$optimal_proteins,
+                                 EN_PGMC_plasma_signature_both$results,
+                                 group_colors = group_colors,
+                                 output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/heatmap_PLASMA",
+                                 highlight_ids = participant_code_label)
 
 ## -> Elastic Net + CSF
 EN_PGMC_CSF_signature_both = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                   enet_optimal_protein_signature_CSF_both$optimal_proteins,
-                                                   fluid = "CSF",
-                                                   model_type = "elastic_net",
-                                                   output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/")
+                                                                   enet_optimal_protein_signature_CSF_both$optimal_proteins,
+                                                                   fluid = "CSF",
+                                                                   model_type = "elastic_net",
+                                                                   output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/")
 
 external_enet_csf_wide_both <- build_external_ml_dataset(
   external_all_data, "CSF", "NPQ",
@@ -1888,12 +2017,12 @@ participant_code_label = EN_PGMC_CSF_signature_both$results %>%
 # Unsupervised visualisation (heatmap) of PGMC, ALS, CTR based on 9-protein signature
 
 run_heatmap_signature_CNS_IMMUNE(all_data,
-                      "CSF",
-                      enet_optimal_protein_signature_CSF_both$optimal_proteins,
-                      EN_PGMC_CSF_signature_both$results,
-                      group_colors = group_colors,
-                      output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/heatmap_CSF",
-                      highlight_ids = participant_code_label)
+                                 "CSF",
+                                 enet_optimal_protein_signature_CSF_both$optimal_proteins,
+                                 EN_PGMC_CSF_signature_both$results,
+                                 group_colors = group_colors,
+                                 output_prefix = "plots/CNS_IMMUNE_panels/ML/Elastic Net/heatmap_CSF",
+                                 highlight_ids = participant_code_label)
 
 
 ## ==========================================================
@@ -1932,49 +2061,49 @@ for (fluid in fluids) {
   ## Run Lasso and ROC curve with 5-fold cv and 500 bootstrap iterations
   lm_PGMC_CTR_CNS <- runML_with_lasso(protein_data_PGMCvsCTR_CNS, bs_count = 500)
   final_roc_plot_PGMC_CTR_CNS <- calculateROC(lm_PGMC_CTR_CNS,
-                                          paste0("plots/ML/Lasso/ROC_lm_CNS_", fluid, "_PGMC_CTR.pdf"))
+                                              paste0("plots/ML/Lasso/ROC_lm_CNS_", fluid, "_PGMC_CTR.pdf"))
   
   lm_ALS_CTR_CNS <- runML_with_lasso(protein_data_ALSvsCTR_CNS, bs_count = 500)
   final_roc_plot_ALS_CTR_CNS <- calculateROC(lm_ALS_CTR_CNS,
-                                         paste0("plots/ML/Lasso/ROC_lm_CNS_", fluid, "_ALS_CTR.pdf"))
+                                             paste0("plots/ML/Lasso/ROC_lm_CNS_", fluid, "_ALS_CTR.pdf"))
   
   lm_ALS_PGMC_CNS <- runML_with_lasso(protein_data_ALSvsPGMC_CNS, bs_count = 500)
   final_roc_plot_ALS_PGMC_CNS <- calculateROC(lm_ALS_PGMC_CNS,
-                                          paste0("plots/ML/Lasso/ROC_lm_CNS_", fluid, "_ALS_PGMC.pdf"))
+                                              paste0("plots/ML/Lasso/ROC_lm_CNS_", fluid, "_ALS_PGMC.pdf"))
   
   ## Extract weights + plot averaged
   lm_weights_PGMC_CTR_CNS <- feature_importance(lm_PGMC_CTR_CNS,
-                                            plot_path = paste0("plots/ML/Lasso/protein_selection_CNS_", fluid, "_PGMC_CTR.pdf"))
+                                                plot_path = paste0("plots/ML/Lasso/protein_selection_CNS_", fluid, "_PGMC_CTR.pdf"))
   write_xlsx(lm_weights_PGMC_CTR_CNS, path = paste0("results/weights_lm_CNS_", fluid, "_PGMC_CTR.xlsx"))
   
   lm_weights_ALS_CTR_CNS <- feature_importance(lm_ALS_CTR_CNS,
-                                           plot_path = paste0("plots/ML/Lasso/protein_selection_CNS_", fluid, "_ALS_CTR.pdf"))
+                                               plot_path = paste0("plots/ML/Lasso/protein_selection_CNS_", fluid, "_ALS_CTR.pdf"))
   write_xlsx(lm_weights_ALS_CTR_CNS, path = paste0("results/weights_lm_CNS_", fluid, "_ALS_CTR.xlsx"))
   
   lm_weights_ALS_PGMC_CNS <- feature_importance(lm_ALS_PGMC_CNS,
-                                            plot_path = paste0("plots/ML/Lasso/protein_selection_CNS_", fluid, "_ALS_PGMC.pdf"))
+                                                plot_path = paste0("plots/ML/Lasso/protein_selection_CNS_", fluid, "_ALS_PGMC.pdf"))
   write_xlsx(lm_weights_ALS_PGMC_CNS, path = paste0("results/weights_lm_CNS_", fluid, "_ALS_PGMC.xlsx"))
   
   # Run Elastic Net and ROC curve with 5-fold cv and 500 bootstrap iterations
   lm_enet_PGMC_CTR_CNS <- runML_with_elasticnet(protein_data_PGMCvsCTR_CNS,bs_count = 500)
   final_roc_plot_PGMC_CTR_enet_CNS = calculateROC(lm_enet_PGMC_CTR_CNS,
-                                              paste0("plots/ML/Elastic Net/ROC_lm_CNS_",fluid,"_PGMC_CTR.pdf"))
+                                                  paste0("plots/ML/Elastic Net/ROC_lm_CNS_",fluid,"_PGMC_CTR.pdf"))
   lm_enet_ALS_CTR_CNS <- runML_with_elasticnet(protein_data_ALSvsCTR_CNS,bs_count = 500)
   final_roc_plot_ALS_CTR_enet_CNS = calculateROC(lm_enet_ALS_CTR_CNS,
-                                             paste0("plots/ML/Elastic Net/ROC_lm_CNS_",fluid,"_ALS_CTR.pdf"))
+                                                 paste0("plots/ML/Elastic Net/ROC_lm_CNS_",fluid,"_ALS_CTR.pdf"))
   lm_enet_ALS_PGMC_CNS <- runML_with_elasticnet(protein_data_ALSvsPGMC_CNS,bs_count = 500)
   final_roc_plot_ALS_PGMC_enet_CNS = calculateROC(lm_enet_ALS_PGMC_CNS,
-                                              paste0("plots/ML/Elastic Net/ROC_lm_CNS_",fluid,"_ALS_PGMC.pdf"))
+                                                  paste0("plots/ML/Elastic Net/ROC_lm_CNS_",fluid,"_ALS_PGMC.pdf"))
   
   # extract weights + plot averaged
   lm_weights_PGMC_CTR_enet_CNS = feature_importance(lm_enet_PGMC_CTR_CNS,
-                                                plot_path = paste0("plots/ML/Elastic Net/protein_selection_CNS_",fluid,"_PGMC_CTR.pdf"))
+                                                    plot_path = paste0("plots/ML/Elastic Net/protein_selection_CNS_",fluid,"_PGMC_CTR.pdf"))
   write_xlsx(lm_weights_PGMC_CTR_enet_CNS, path = paste0("results/weights_lm_enet_CNS_",fluid,"_PGMC_CTR.xlsx"))
   lm_weights_ALS_CTR_enet_CNS = feature_importance(lm_enet_ALS_CTR_CNS,
-                                               plot_path = paste0("plots/ML/Elastic Net/protein_selection_CNS_",fluid,"_ALS_CTR.pdf"))
+                                                   plot_path = paste0("plots/ML/Elastic Net/protein_selection_CNS_",fluid,"_ALS_CTR.pdf"))
   write_xlsx(lm_weights_ALS_CTR_enet_CNS, path = paste0("results/weights_lm_enet_CNS_",fluid,"_ALS_CTR.xlsx"))
   lm_weights_ALS_PGMC_enet_CNS = feature_importance(lm_enet_ALS_PGMC_CNS,
-                                                plot_path = paste0("plots/ML/Elastic Net/protein_selection_CNS_",fluid,"_ALS_PGMC.pdf"))
+                                                    plot_path = paste0("plots/ML/Elastic Net/protein_selection_CNS_",fluid,"_ALS_PGMC.pdf"))
   write_xlsx(lm_weights_ALS_PGMC_enet_CNS, path = paste0("results/weights_lm_enet_CNS_",fluid,"_ALS_PGMC.xlsx"))
 }
 
@@ -1984,56 +2113,56 @@ proteins_serum_ALS_CTR = c("NEFL_CNS","pTau-181_CNS","ACHE_CNS","BASP1_CNS",
                            "GDNF_CNS","NGF_CNS","pTau-231_CNS","IL33_CNS",
                            "CXCL8_CNS","NRGN_CNS","PDLIM5_CNS")
 lasso_optimal_protein_signature_serum_CNS = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                      "SERUM", 
-                                                                                                      c("ALS",  "CTR"), 
-                                                                                                      "NPQ", "ALS",
-                                                                                                      covariate_table,
-                                                                                                      panel_mode = "CNS"),
-                                                                          ranked_proteins = proteins_serum_ALS_CTR,
-                                                                          fluid = "SERUM",
-                                                                          output_prefix = "plots/ML/Lasso/performance_CNS_")
+                                                                                                          "SERUM", 
+                                                                                                          c("ALS",  "CTR"), 
+                                                                                                          "NPQ", "ALS",
+                                                                                                          covariate_table,
+                                                                                                          panel_mode = "CNS"),
+                                                                              ranked_proteins = proteins_serum_ALS_CTR,
+                                                                              fluid = "SERUM",
+                                                                              output_prefix = "plots/ML/Lasso/performance_CNS_")
 
 ## -> Lasso + Plasma
 proteins_plasma_ALS_CTR = c("NEFL_CNS","pTau-181_CNS","TEK_CNS",
                             "IL1B_CNS","CXCL8_CNS","GDNF_CNS","PDLIM5_CNS",
                             "CX3CL1_CNS","VSNL1_CNS","FCN2_CNS","HBA1_CNS")
 lasso_optimal_protein_signature_plasma_CNS = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                       "PLASMA", 
-                                                                                                       c("ALS",  "CTR"), 
-                                                                                                       "NPQ", "ALS",
-                                                                                                       covariate_table,
-                                                                                                       panel_mode = "CNS"),
-                                                                           ranked_proteins = proteins_plasma_ALS_CTR,
-                                                                           fluid = "PLASMA",
-                                                                           output_prefix = "plots/ML/Lasso/performance_CNS_")
+                                                                                                           "PLASMA", 
+                                                                                                           c("ALS",  "CTR"), 
+                                                                                                           "NPQ", "ALS",
+                                                                                                           covariate_table,
+                                                                                                           panel_mode = "CNS"),
+                                                                               ranked_proteins = proteins_plasma_ALS_CTR,
+                                                                               fluid = "PLASMA",
+                                                                               output_prefix = "plots/ML/Lasso/performance_CNS_")
 
 # Elastic Net + Serum
 proteins_serum_ALS_CTR = c("NEFL_CNS","pTau-181_CNS","GDNF_CNS","ACHE_CNS",
                            "BASP1_CNS","pTau-231_CNS","NGF_CNS","IL33_CNS",
                            "CXCL8_CNS","NRGN_CNS","PDLIM5_CNS")
 enet_optimal_protein_signature_serum_CNS = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                     "SERUM", 
-                                                                                                     c("ALS",  "CTR"), 
-                                                                                                     "NPQ", "ALS",
-                                                                                                     covariate_table,
-                                                                                                     panel_mode = "CNS"),
-                                                                         ranked_proteins = proteins_serum_ALS_CTR,
-                                                                         fluid = "SERUM",
-                                                                         output_prefix = "plots/ML/Elastic Net/performance_CNS_")
+                                                                                                         "SERUM", 
+                                                                                                         c("ALS",  "CTR"), 
+                                                                                                         "NPQ", "ALS",
+                                                                                                         covariate_table,
+                                                                                                         panel_mode = "CNS"),
+                                                                             ranked_proteins = proteins_serum_ALS_CTR,
+                                                                             fluid = "SERUM",
+                                                                             output_prefix = "plots/ML/Elastic Net/performance_CNS_")
 
 # Elastic Net + Plasma
 proteins_plasma_ALS_CTR = c("NEFL_CNS","pTau-181_CNS","TEK_CNS","IL1B_CNS",
                             "CXCL8_CNS","GDNF_CNS","VSNL1_CNS","PDLIM5_CNS",
                             "CX3CL1_CNS","FCN2_CNS","SFRP1_CNS")
 enet_optimal_protein_signature_plasma_CNS = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                      "PLASMA", 
-                                                                                                      c("ALS",  "CTR"), 
-                                                                                                      "NPQ", "ALS",
-                                                                                                      covariate_table,
-                                                                                                      panel_mode = "CNS"),
-                                                                          ranked_proteins = proteins_plasma_ALS_CTR,
-                                                                          fluid = "PLASMA",
-                                                                          output_prefix = "plots/ML/Elastic Net/performance_CNS_")
+                                                                                                          "PLASMA", 
+                                                                                                          c("ALS",  "CTR"), 
+                                                                                                          "NPQ", "ALS",
+                                                                                                          covariate_table,
+                                                                                                          panel_mode = "CNS"),
+                                                                              ranked_proteins = proteins_plasma_ALS_CTR,
+                                                                              fluid = "PLASMA",
+                                                                              output_prefix = "plots/ML/Elastic Net/performance_CNS_")
 
 # Elastic Net + CSF
 proteins_CSF_ALS_CTR =  c("NEFH_CNS","NEFL_CNS","CCL13_CNS","IL4_CNS",
@@ -2041,14 +2170,14 @@ proteins_CSF_ALS_CTR =  c("NEFH_CNS","NEFL_CNS","CCL13_CNS","IL4_CNS",
                           "CALB2_CNS","Aβ38_CNS","ICAM1_CNS")
 
 enet_optimal_protein_signature_CSF_CNS = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                   "CSF", 
-                                                                                                   c("ALS",  "CTR"), 
-                                                                                                   "NPQ", "ALS",
-                                                                                                   covariate_table,
-                                                                                                   panel_mode = "CNS"),
-                                                                       ranked_proteins = proteins_CSF_ALS_CTR,
-                                                                       fluid = "CSF",
-                                                                       output_prefix = "plots/ML/Elastic Net/performance_CNS_")
+                                                                                                       "CSF", 
+                                                                                                       c("ALS",  "CTR"), 
+                                                                                                       "NPQ", "ALS",
+                                                                                                       covariate_table,
+                                                                                                       panel_mode = "CNS"),
+                                                                           ranked_proteins = proteins_CSF_ALS_CTR,
+                                                                           fluid = "CSF",
+                                                                           output_prefix = "plots/ML/Elastic Net/performance_CNS_")
 
 # ====================================================
 # Compute an ALS risk score based on ALS vs CTR model 
@@ -2056,11 +2185,11 @@ enet_optimal_protein_signature_CSF_CNS = find_optimal_signature_CNS_IMMUNE(data_
 proteins_serum_ALS_CTR_CNS = lasso_optimal_protein_signature_serum_CNS$optimal_proteins
 
 lasso_PGMC_serum_signature_CNS = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                                   proteins_serum_ALS_CTR_CNS,
-                                                                   fluid = "SERUM",
-                                                                   model_type = "lasso",
-                                                                   output_prefix = "plots/ML/Lasso/CNS_",
-                                                                   panel_mode = "CNS")
+                                                                       proteins_serum_ALS_CTR_CNS,
+                                                                       fluid = "SERUM",
+                                                                       model_type = "lasso",
+                                                                       output_prefix = "plots/ML/Lasso/CNS_",
+                                                                       panel_mode = "CNS")
 
 external_lasso_serum_wide_CNS <- build_external_ml_dataset(
   external_all_data, "SERUM", "NPQ",
@@ -2108,11 +2237,11 @@ run_heatmap_signature_CNS_IMMUNE(all_data,
 proteins_plasma_ALS_CTR_CNS = lasso_optimal_protein_signature_plasma_CNS$optimal_proteins
 
 lasso_PGMC_plasma_signature_CNS = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                                    proteins_plasma_ALS_CTR_CNS,
-                                                                    fluid = "PLASMA",
-                                                                    model_type = "lasso",
-                                                                    output_prefix = "plots/ML/Lasso/CNS_",
-                                                                    panel_mode = "CNS")
+                                                                        proteins_plasma_ALS_CTR_CNS,
+                                                                        fluid = "PLASMA",
+                                                                        model_type = "lasso",
+                                                                        output_prefix = "plots/ML/Lasso/CNS_",
+                                                                        panel_mode = "CNS")
 
 external_lasso_plasma_wide_CNS <- build_external_ml_dataset(
   external_all_data, "PLASMA", "NPQ",
@@ -2155,7 +2284,7 @@ run_heatmap_signature_CNS_IMMUNE(all_data,
                                  output_prefix = "plots/ML/Lasso/heatmap_plasma_CNS",
                                  highlight_ids = participant_code_label,
                                  panel_mode = "CNS"
-                                 )
+)
 
 
 ##### ----
@@ -2163,11 +2292,11 @@ run_heatmap_signature_CNS_IMMUNE(all_data,
 
 ## -> Elastic Net + Serum
 EN_PGMC_serum_signature_CNS = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                                enet_optimal_protein_signature_serum_CNS$optimal_proteins,
-                                                                fluid = "SERUM",
-                                                                model_type = "elastic_net",
-                                                                output_prefix = "plots/ML/Elastic Net/CNS_",
-                                                                panel_mode = "CNS")
+                                                                    enet_optimal_protein_signature_serum_CNS$optimal_proteins,
+                                                                    fluid = "SERUM",
+                                                                    model_type = "elastic_net",
+                                                                    output_prefix = "plots/ML/Elastic Net/CNS_",
+                                                                    panel_mode = "CNS")
 
 external_enet_serum_wide_CNS <- build_external_ml_dataset(
   external_all_data, "SERUM", "NPQ",
@@ -2209,11 +2338,11 @@ run_heatmap_signature_CNS_IMMUNE(all_data,
 
 ## -> Elastic Net + Plasma
 EN_PGMC_plasma_signature_CNS = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                                 enet_optimal_protein_signature_plasma_CNS$optimal_proteins,
-                                                                 fluid = "PLASMA",
-                                                                 model_type = "elastic_net",
-                                                                 output_prefix = "plots/ML/Elastic Net/CNS_",
-                                                                 panel_mode = "CNS")
+                                                                     enet_optimal_protein_signature_plasma_CNS$optimal_proteins,
+                                                                     fluid = "PLASMA",
+                                                                     model_type = "elastic_net",
+                                                                     output_prefix = "plots/ML/Elastic Net/CNS_",
+                                                                     panel_mode = "CNS")
 
 external_enet_plasma_wide_CNS <- build_external_ml_dataset(
   external_all_data, "PLASMA", "NPQ",
@@ -2255,11 +2384,11 @@ run_heatmap_signature_CNS_IMMUNE(all_data,
 
 ## -> Elastic Net + CSF
 EN_PGMC_CSF_signature_CNS = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                              enet_optimal_protein_signature_CSF_CNS$optimal_proteins,
-                                                              fluid = "CSF",
-                                                              model_type = "elastic_net",
-                                                              output_prefix = "plots/ML/Elastic Net/CNS_",
-                                                              panel_mode = "CNS")
+                                                                  enet_optimal_protein_signature_CSF_CNS$optimal_proteins,
+                                                                  fluid = "CSF",
+                                                                  model_type = "elastic_net",
+                                                                  output_prefix = "plots/ML/Elastic Net/CNS_",
+                                                                  panel_mode = "CNS")
 
 external_enet_csf_wide_CNS <- build_external_ml_dataset(
   external_all_data, "CSF", "NPQ",
@@ -2324,61 +2453,61 @@ for (fluid in fluids) {
   
   ## Prepare merged, z-scored, correlation-averaged datasets
   protein_data_PGMCvsCTR_IMMUNE <- build_ml_dataset(all_data, fluid, c("PGMC", "CTR"), "NPQ",     "PGMC",
-                                                 covariate_table,
-                                                 panel_mode = "IMMUNE")
+                                                    covariate_table,
+                                                    panel_mode = "IMMUNE")
   protein_data_ALSvsCTR_IMMUNE  <- build_ml_dataset(all_data, fluid, c("ALS",  "CTR"), "NPQ", "ALS",
-                                                 covariate_table,
-                                                 panel_mode = "IMMUNE")
+                                                    covariate_table,
+                                                    panel_mode = "IMMUNE")
   protein_data_ALSvsPGMC_IMMUNE <- build_ml_dataset(all_data, fluid, c("ALS",  "PGMC"), "NPQ", "ALS",
-                                                 covariate_table,
-                                                 panel_mode = "IMMUNE")
+                                                    covariate_table,
+                                                    panel_mode = "IMMUNE")
   
   ## Run Lasso and ROC curve with 5-fold cv and 500 bootstrap iterations
   lm_PGMC_CTR_IMMUNE <- runML_with_lasso(protein_data_PGMCvsCTR_IMMUNE, bs_count = 500)
   final_roc_plot_PGMC_CTR_IMMUNE <- calculateROC(lm_PGMC_CTR_IMMUNE,
-                                              paste0("plots/ML/Lasso/ROC_lm_IMMUNE_", fluid, "_PGMC_CTR.pdf"))
+                                                 paste0("plots/ML/Lasso/ROC_lm_IMMUNE_", fluid, "_PGMC_CTR.pdf"))
   
   lm_ALS_CTR_IMMUNE <- runML_with_lasso(protein_data_ALSvsCTR_IMMUNE, bs_count = 500)
   final_roc_plot_ALS_CTR_IMMUNE <- calculateROC(lm_ALS_CTR_IMMUNE,
-                                             paste0("plots/ML/Lasso/ROC_lm_IMMUNE_", fluid, "_ALS_CTR.pdf"))
+                                                paste0("plots/ML/Lasso/ROC_lm_IMMUNE_", fluid, "_ALS_CTR.pdf"))
   
   lm_ALS_PGMC_IMMUNE <- runML_with_lasso(protein_data_ALSvsPGMC_IMMUNE, bs_count = 500)
   final_roc_plot_ALS_PGMC_IMMUNE <- calculateROC(lm_ALS_PGMC_IMMUNE,
-                                              paste0("plots/ML/Lasso/ROC_lm_IMMUNE_", fluid, "_ALS_PGMC.pdf"))
+                                                 paste0("plots/ML/Lasso/ROC_lm_IMMUNE_", fluid, "_ALS_PGMC.pdf"))
   
   ## Extract weights + plot averaged
   lm_weights_PGMC_CTR_IMMUNE <- feature_importance(lm_PGMC_CTR_IMMUNE,
-                                                plot_path = paste0("plots/ML/Lasso/protein_selection_IMMUNE_", fluid, "_PGMC_CTR.pdf"))
+                                                   plot_path = paste0("plots/ML/Lasso/protein_selection_IMMUNE_", fluid, "_PGMC_CTR.pdf"))
   write_xlsx(lm_weights_PGMC_CTR_IMMUNE, path = paste0("results/weights_lm_IMMUNE_", fluid, "_PGMC_CTR.xlsx"))
   
   lm_weights_ALS_CTR_IMMUNE <- feature_importance(lm_ALS_CTR_IMMUNE,
-                                               plot_path = paste0("plots/ML/Lasso/protein_selection_IMMUNE_", fluid, "_ALS_CTR.pdf"))
+                                                  plot_path = paste0("plots/ML/Lasso/protein_selection_IMMUNE_", fluid, "_ALS_CTR.pdf"))
   write_xlsx(lm_weights_ALS_CTR_IMMUNE, path = paste0("results/weights_lm_IMMUNE_", fluid, "_ALS_CTR.xlsx"))
   
   lm_weights_ALS_PGMC_IMMUNE <- feature_importance(lm_ALS_PGMC_IMMUNE,
-                                                plot_path = paste0("plots/ML/Lasso/protein_selection_IMMUNE_", fluid, "_ALS_PGMC.pdf"))
+                                                   plot_path = paste0("plots/ML/Lasso/protein_selection_IMMUNE_", fluid, "_ALS_PGMC.pdf"))
   write_xlsx(lm_weights_ALS_PGMC_IMMUNE, path = paste0("results/weights_lm_IMMUNE_", fluid, "_ALS_PGMC.xlsx"))
   
   # Run Elastic Net and ROC curve with 5-fold cv and 500 bootstrap iterations
   lm_enet_PGMC_CTR_IMMUNE <- runML_with_elasticnet(protein_data_PGMCvsCTR_IMMUNE,bs_count = 500)
   final_roc_plot_PGMC_CTR_enet_IMMUNE = calculateROC(lm_enet_PGMC_CTR_IMMUNE,
-                                                  paste0("plots/ML/Elastic Net/ROC_lm_IMMUNE_",fluid,"_PGMC_CTR.pdf"))
+                                                     paste0("plots/ML/Elastic Net/ROC_lm_IMMUNE_",fluid,"_PGMC_CTR.pdf"))
   lm_enet_ALS_CTR_IMMUNE <- runML_with_elasticnet(protein_data_ALSvsCTR_IMMUNE,bs_count = 500)
   final_roc_plot_ALS_CTR_enet_IMMUNE = calculateROC(lm_enet_ALS_CTR_IMMUNE,
-                                                 paste0("plots/ML/Elastic Net/ROC_lm_IMMUNE_",fluid,"_ALS_CTR.pdf"))
+                                                    paste0("plots/ML/Elastic Net/ROC_lm_IMMUNE_",fluid,"_ALS_CTR.pdf"))
   lm_enet_ALS_PGMC_IMMUNE <- runML_with_elasticnet(protein_data_ALSvsPGMC_IMMUNE,bs_count = 500)
   final_roc_plot_ALS_PGMC_enet_IMMUNE = calculateROC(lm_enet_ALS_PGMC_IMMUNE,
-                                                  paste0("plots/ML/Elastic Net/ROC_lm_IMMUNE_",fluid,"_ALS_PGMC.pdf"))
+                                                     paste0("plots/ML/Elastic Net/ROC_lm_IMMUNE_",fluid,"_ALS_PGMC.pdf"))
   
   # extract weights + plot averaged
   lm_weights_PGMC_CTR_enet_IMMUNE = feature_importance(lm_enet_PGMC_CTR_IMMUNE,
-                                                    plot_path = paste0("plots/ML/Elastic Net/protein_selection_IMMUNE_",fluid,"_PGMC_CTR.pdf"))
+                                                       plot_path = paste0("plots/ML/Elastic Net/protein_selection_IMMUNE_",fluid,"_PGMC_CTR.pdf"))
   write_xlsx(lm_weights_PGMC_CTR_enet_IMMUNE, path = paste0("results/weights_lm_enet_IMMUNE_",fluid,"_PGMC_CTR.xlsx"))
   lm_weights_ALS_CTR_enet_IMMUNE = feature_importance(lm_enet_ALS_CTR_IMMUNE,
-                                                   plot_path = paste0("plots/ML/Elastic Net/protein_selection_IMMUNE_",fluid,"_ALS_CTR.pdf"))
+                                                      plot_path = paste0("plots/ML/Elastic Net/protein_selection_IMMUNE_",fluid,"_ALS_CTR.pdf"))
   write_xlsx(lm_weights_ALS_CTR_enet_IMMUNE, path = paste0("results/weights_lm_enet_IMMUNE_",fluid,"_ALS_CTR.xlsx"))
   lm_weights_ALS_PGMC_enet_IMMUNE = feature_importance(lm_enet_ALS_PGMC_IMMUNE,
-                                                    plot_path = paste0("plots/ML/Elastic Net/protein_selection_IMMUNE_",fluid,"_ALS_PGMC.pdf"))
+                                                       plot_path = paste0("plots/ML/Elastic Net/protein_selection_IMMUNE_",fluid,"_ALS_PGMC.pdf"))
   write_xlsx(lm_weights_ALS_PGMC_enet_IMMUNE, path = paste0("results/weights_lm_enet_IMMUNE_",fluid,"_ALS_PGMC.xlsx"))
 }
 
@@ -2388,56 +2517,56 @@ proteins_serum_ALS_CTR = c("CLEC4A_IMMUNE","HAVCR1_IMMUNE","IL18R1_IMMUNE","SELE
                            "TNFRSF13C_IMMUNE","CD200_IMMUNE", "CTLA4_IMMUNE",
                            "SIRPA_IMMUNE","NGF_IMMUNE","GZMB_IMMUNE","BST2_IMMUNE")
 lasso_optimal_protein_signature_serum_IMMUNE = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                      "SERUM", 
-                                                                                                      c("ALS",  "CTR"), 
-                                                                                                      "NPQ", "ALS",
-                                                                                                      covariate_table,
-                                                                                                      panel_mode = "IMMUNE"),
-                                                                          ranked_proteins = proteins_serum_ALS_CTR,
-                                                                          fluid = "SERUM",
-                                                                          output_prefix = "plots/ML/Lasso/performance_IMMUNE_")
+                                                                                                             "SERUM", 
+                                                                                                             c("ALS",  "CTR"), 
+                                                                                                             "NPQ", "ALS",
+                                                                                                             covariate_table,
+                                                                                                             panel_mode = "IMMUNE"),
+                                                                                 ranked_proteins = proteins_serum_ALS_CTR,
+                                                                                 fluid = "SERUM",
+                                                                                 output_prefix = "plots/ML/Lasso/performance_IMMUNE_")
 
 ## -> Lasso + Plasma
 proteins_plasma_ALS_CTR = c("IL1RL1_IMMUNE","CD200_IMMUNE","HAVCR1_IMMUNE","CXCL10_IMMUNE",
                             "CCL25_IMMUNE","TNFSF9_IMMUNE","TSLP_IMMUNE","TNFRSF13C_IMMUNE",
                             "AGRP_IMMUNE","CD3E_IMMUNE","SIRPA_IMMUNE")
 lasso_optimal_protein_signature_plasma_IMMUNE = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                       "PLASMA", 
-                                                                                                       c("ALS",  "CTR"), 
-                                                                                                       "NPQ", "ALS",
-                                                                                                       covariate_table,
-                                                                                                       panel_mode = "IMMUNE"),
-                                                                           ranked_proteins = proteins_plasma_ALS_CTR,
-                                                                           fluid = "PLASMA",
-                                                                           output_prefix = "plots/ML/Lasso/performance_IMMUNE_")
+                                                                                                              "PLASMA", 
+                                                                                                              c("ALS",  "CTR"), 
+                                                                                                              "NPQ", "ALS",
+                                                                                                              covariate_table,
+                                                                                                              panel_mode = "IMMUNE"),
+                                                                                  ranked_proteins = proteins_plasma_ALS_CTR,
+                                                                                  fluid = "PLASMA",
+                                                                                  output_prefix = "plots/ML/Lasso/performance_IMMUNE_")
 
 # Elastic Net + Serum
 proteins_serum_ALS_CTR = c("CLEC4A_IMMUNE","HAVCR1_IMMUNE","SELE_IMMUNE","TNFRSF13C_IMMUNE",
                            "IL18R1_IMMUNE", "CTLA4_IMMUNE","CD200_IMMUNE","CD276_IMMUNE",
                            "SIRPA_IMMUNE","NGF_IMMUNE","GZMB_IMMUNE")
 enet_optimal_protein_signature_serum_IMMUNE = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                     "SERUM", 
-                                                                                                     c("ALS",  "CTR"), 
-                                                                                                     "NPQ", "ALS",
-                                                                                                     covariate_table,
-                                                                                                     panel_mode = "IMMUNE"),
-                                                                         ranked_proteins = proteins_serum_ALS_CTR,
-                                                                         fluid = "SERUM",
-                                                                         output_prefix = "plots/ML/Elastic Net/performance_IMMUNE_")
+                                                                                                            "SERUM", 
+                                                                                                            c("ALS",  "CTR"), 
+                                                                                                            "NPQ", "ALS",
+                                                                                                            covariate_table,
+                                                                                                            panel_mode = "IMMUNE"),
+                                                                                ranked_proteins = proteins_serum_ALS_CTR,
+                                                                                fluid = "SERUM",
+                                                                                output_prefix = "plots/ML/Elastic Net/performance_IMMUNE_")
 
 # Elastic Net + Plasma
 proteins_plasma_ALS_CTR = c("IL1RL1_IMMUNE","CXCL10_IMMUNE","CCL25_IMMUNE","CD200_IMMUNE",
                             "TNFSF9_IMMUNE","SELE_IMMUNE","HAVCR1_IMMUNE","BST2_IMMUNE",
                             "PGF_IMMUNE","TSLP_IMMUNE","AGRP_IMMUNE")
 enet_optimal_protein_signature_plasma_IMMUNE = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                      "PLASMA", 
-                                                                                                      c("ALS",  "CTR"), 
-                                                                                                      "NPQ", "ALS",
-                                                                                                      covariate_table,
-                                                                                                      panel_mode = "IMMUNE"),
-                                                                          ranked_proteins = proteins_plasma_ALS_CTR,
-                                                                          fluid = "PLASMA",
-                                                                          output_prefix = "plots/ML/Elastic Net/performance_IMMUNE_")
+                                                                                                             "PLASMA", 
+                                                                                                             c("ALS",  "CTR"), 
+                                                                                                             "NPQ", "ALS",
+                                                                                                             covariate_table,
+                                                                                                             panel_mode = "IMMUNE"),
+                                                                                 ranked_proteins = proteins_plasma_ALS_CTR,
+                                                                                 fluid = "PLASMA",
+                                                                                 output_prefix = "plots/ML/Elastic Net/performance_IMMUNE_")
 
 # Elastic Net + CSF
 proteins_CSF_ALS_CTR =  c("CCL28_IMMUNE","EPO_IMMUNE","PDCD1LG2_IMMUNE","IL18_IMMUNE",
@@ -2445,14 +2574,14 @@ proteins_CSF_ALS_CTR =  c("CCL28_IMMUNE","EPO_IMMUNE","PDCD1LG2_IMMUNE","IL18_IM
                           "IL19_IMMUNE","CXCL11_IMMUNE","CHI3L1_IMMUNE")
 
 enet_optimal_protein_signature_CSF_IMMUNE = find_optimal_signature_CNS_IMMUNE(data_all = build_ml_dataset(all_data, 
-                                                                                                   "CSF", 
-                                                                                                   c("ALS",  "CTR"), 
-                                                                                                   "NPQ", "ALS",
-                                                                                                   covariate_table,
-                                                                                                   panel_mode = "IMMUNE"),
-                                                                       ranked_proteins = proteins_CSF_ALS_CTR,
-                                                                       fluid = "CSF",
-                                                                       output_prefix = "plots/ML/Elastic Net/performance_IMMUNE_")
+                                                                                                          "CSF", 
+                                                                                                          c("ALS",  "CTR"), 
+                                                                                                          "NPQ", "ALS",
+                                                                                                          covariate_table,
+                                                                                                          panel_mode = "IMMUNE"),
+                                                                              ranked_proteins = proteins_CSF_ALS_CTR,
+                                                                              fluid = "CSF",
+                                                                              output_prefix = "plots/ML/Elastic Net/performance_IMMUNE_")
 
 # ====================================================
 # Compute an ALS risk score based on ALS vs CTR model 
@@ -2460,11 +2589,11 @@ enet_optimal_protein_signature_CSF_IMMUNE = find_optimal_signature_CNS_IMMUNE(da
 proteins_serum_ALS_CTR_IMMUNE = lasso_optimal_protein_signature_serum_IMMUNE$optimal_proteins
 
 lasso_PGMC_serum_signature_IMMUNE = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                                   proteins_serum_ALS_CTR_IMMUNE,
-                                                                   fluid = "SERUM",
-                                                                   model_type = "lasso",
-                                                                   output_prefix = "plots/ML/Lasso/IMMUNE_",
-                                                                   panel_mode = "IMMUNE")
+                                                                          proteins_serum_ALS_CTR_IMMUNE,
+                                                                          fluid = "SERUM",
+                                                                          model_type = "lasso",
+                                                                          output_prefix = "plots/ML/Lasso/IMMUNE_",
+                                                                          panel_mode = "IMMUNE")
 
 external_lasso_serum_wide_IMMUNE <- build_external_ml_dataset(
   external_all_data, "SERUM", "NPQ",
@@ -2512,11 +2641,11 @@ run_heatmap_signature_CNS_IMMUNE(all_data,
 proteins_plasma_ALS_CTR_IMMUNE = lasso_optimal_protein_signature_plasma_IMMUNE$optimal_proteins
 
 lasso_PGMC_plasma_signature_IMMUNE = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                                    proteins_plasma_ALS_CTR_IMMUNE,
-                                                                    fluid = "PLASMA",
-                                                                    model_type = "lasso",
-                                                                    output_prefix = "plots/ML/Lasso/IMMUNE_",
-                                                                    panel_mode = "IMMUNE")
+                                                                           proteins_plasma_ALS_CTR_IMMUNE,
+                                                                           fluid = "PLASMA",
+                                                                           model_type = "lasso",
+                                                                           output_prefix = "plots/ML/Lasso/IMMUNE_",
+                                                                           panel_mode = "IMMUNE")
 
 external_lasso_plasma_wide_IMMUNE <- build_external_ml_dataset(
   external_all_data, "PLASMA", "NPQ",
@@ -2567,11 +2696,11 @@ run_heatmap_signature_CNS_IMMUNE(all_data,
 
 ## -> Elastic Net + Serum
 EN_PGMC_serum_signature_IMMUNE = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                                enet_optimal_protein_signature_serum_IMMUNE$optimal_proteins,
-                                                                fluid = "SERUM",
-                                                                model_type = "elastic_net",
-                                                                output_prefix = "plots/ML/Elastic Net/IMMUNE_",
-                                                                panel_mode = "IMMUNE")
+                                                                       enet_optimal_protein_signature_serum_IMMUNE$optimal_proteins,
+                                                                       fluid = "SERUM",
+                                                                       model_type = "elastic_net",
+                                                                       output_prefix = "plots/ML/Elastic Net/IMMUNE_",
+                                                                       panel_mode = "IMMUNE")
 
 external_enet_serum_wide_IMMUNE <- build_external_ml_dataset(
   external_all_data, "SERUM", "NPQ",
@@ -2613,11 +2742,11 @@ run_heatmap_signature_CNS_IMMUNE(all_data,
 
 ## -> Elastic Net + Plasma
 EN_PGMC_plasma_signature_IMMUNE = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                                 enet_optimal_protein_signature_plasma_IMMUNE$optimal_proteins,
-                                                                 fluid = "PLASMA",
-                                                                 model_type = "elastic_net",
-                                                                 output_prefix = "plots/ML/Elastic Net/IMMUNE_",
-                                                                 panel_mode = "IMMUNE")
+                                                                        enet_optimal_protein_signature_plasma_IMMUNE$optimal_proteins,
+                                                                        fluid = "PLASMA",
+                                                                        model_type = "elastic_net",
+                                                                        output_prefix = "plots/ML/Elastic Net/IMMUNE_",
+                                                                        panel_mode = "IMMUNE")
 
 external_enet_plasma_wide_IMMUNE <- build_external_ml_dataset(
   external_all_data, "PLASMA", "NPQ",
@@ -2659,11 +2788,11 @@ run_heatmap_signature_CNS_IMMUNE(all_data,
 
 ## -> Elastic Net + CSF
 EN_PGMC_CSF_signature_IMMUNE = run_ALS_signature_workflow_CNS_IMMUNE(all_data,
-                                                              enet_optimal_protein_signature_CSF_IMMUNE$optimal_proteins,
-                                                              fluid = "CSF",
-                                                              model_type = "elastic_net",
-                                                              output_prefix = "plots/ML/Elastic Net/IMMUNE_",
-                                                              panel_mode = "IMMUNE")
+                                                                     enet_optimal_protein_signature_CSF_IMMUNE$optimal_proteins,
+                                                                     fluid = "CSF",
+                                                                     model_type = "elastic_net",
+                                                                     output_prefix = "plots/ML/Elastic Net/IMMUNE_",
+                                                                     panel_mode = "IMMUNE")
 
 external_enet_csf_wide_IMMUNE <- build_external_ml_dataset(
   external_all_data, "CSF", "NPQ",
@@ -2832,7 +2961,7 @@ plot_external_signature_boxplots <- function(external_long, fluid, proteins, pan
     )
   
   if (!is.null(plot_path)) {
-    ggsave(plot_path, p, width = 3.2 * ncol_facet, height = 3.4 * nrow_facet, limitsize = FALSE)
+    save_fig(plot_path, p, width = 3.2 * ncol_facet, height = 3.4 * nrow_facet, limitsize = FALSE)
     write.csv(stats_table, gsub("\\.pdf$", "_stats.csv", plot_path), row.names = FALSE)
   }
   
@@ -2938,6 +3067,7 @@ sigs <- list(
   "pTau-181 only" = get_cols("pTau-181"),
   "2 proteins (NEFL, pTau-181)" = get_cols(c("NEFL", "pTau-181")),
   "3 proteins (NEFL, pTau-181, NEFH)" = get_cols(c("NEFL", "pTau-181", "NEFH")),
+  #"3 proteins (NEFL, pTau-181, TEK)" = get_cols(c("NEFL","pTau-181","TEK")),
   "4 proteins (Lasso, plasma)" = lasso_optimal_protein_signature_plasma_both$optimal_proteins,
   "10 proteins (Kim et al.)" = get_cols(c("NEFL", "FOLR1", "pTau-181", "TREM1", "VEGFA",
                                           "NEFH", "CALCA", "NRGN", "LAMP3", "PTX3"))
@@ -3062,6 +3192,7 @@ mod_cols <- setNames(c("#555555",   # dark grey
                        "#56B4E9",   # sky blue
                        "#D55E00",   # vermillion
                        "#009E73",   # bluish green
+                       #"#F0E442",   # yellow
                        "#CC79A7")[seq_along(sigs)], names(sigs))   # reddish purple
 
 # weight of every protein in every model 
@@ -3081,8 +3212,8 @@ p_weights <- ggplot(plot_df, aes(x = weight, y = protein, fill = model)) +
   labs(x = "Weight", y = NULL,
        title = paste0("Protein weights in each model, ", fluid))
 print(p_weights)
-ggsave(paste0(out_dir, "weights_", fluid, ".pdf"), p_weights,
-       width = 8, height = 0.5 * length(prot_order) + 4)
+save_fig(paste0(out_dir, "weights_", fluid, ".pdf"), p_weights,
+         width = 8, height = 0.5 * length(prot_order) + 4)
 
 roc_theme <- theme_minimal(base_size = 13) +
   theme(panel.background = element_rect(fill = "white", color = NA),
@@ -3112,8 +3243,8 @@ p_roc <- ggplot(roc_full_df, aes(x = fpr, y = tpr, color = model)) +
        title = paste0("External validation on MAXOMOD data with ", fluid, " signatures"))
 
 print(p_roc)
-ggsave(paste0(out_dir, "ROC_MAXOMOD_comparison_", fluid, ".pdf"), p_roc,
-       width = 7.5, height = 9, dpi = 300)
+save_fig(paste0(out_dir, "ROC_MAXOMOD_comparison_", fluid, ".pdf"), p_roc,
+         width = 7.5, height = 9, dpi = 300)
 
 
 # PGMC risk score in plasma with other signatures
@@ -3138,6 +3269,7 @@ signatures <- list("NEFL only" = find_cols("NEFL"),
                    "pTau-181 only" = find_cols("pTau-181"),
                    "2 proteins (NEFL, pTau-181)" = find_cols(c("NEFL", "pTau-181")),
                    "3 proteins (NEFL, pTau-181, NEFH)" = find_cols(c("NEFL", "pTau-181", "NEFH")),
+                   # "3 proteins (NEFL, pTau-181, TEK)" = find_cols(c("NEFL", "pTau-181", "TEK")),
                    "4 proteins (Lasso, plasma)" = lasso_optimal_protein_signature_plasma_both$optimal_proteins,
                    "Kim et al. (10 proteins)" = find_cols(kim_prots))
 print(signatures)
@@ -3176,7 +3308,7 @@ score_all <- function(nm) {
 all_scores <- bind_rows(lapply(names(sig_runs), score_all))
 
 # age-adjusted: how far is the protein-only score above the controls of the same age?
-z_cut <- 2   # at risk = more than z_cut SD above the controls of the same age
+z_cut <- 2   # "close to phenoconversion" = more than z_cut SD above the controls of the same age
 all_scores$expected <- NA_real_
 all_scores$z_age <- NA_real_
 ctr_fits <- list()
@@ -3223,7 +3355,7 @@ write.csv(by_participant_wide, paste0(sig_dir, "PGMC_risk_by_participant_PLASMA.
 # PGMC that converted to ALS
 converted_ids <- c("TR119", "DE102", "TR122", "TR112")
 
-# how many converters and non-converters are at risk with each model and definition
+# how many converters and non-converters are close to phenoconversion with each model and definition
 conv_summary <- by_participant %>%
   mutate(converter = ParticipantCode %in% converted_ids) %>%
   group_by(signature) %>%
@@ -3242,17 +3374,17 @@ print(by_participant %>%
         select(ParticipantCode, signature, max_score, max_score_protein, max_z_age, beyond_ctr_age) %>%
         arrange(ParticipantCode, signature) %>% as.data.frame(), digits = 2)
 
-# who is at risk with each signature
+# who has a positive calculated closeness to phenoconversion with each signature
 for (nm in names(sig_runs)) {
   d <- by_participant[by_participant$signature == nm, ]
   full_ids <- d$ParticipantCode[d$n_at_risk > 0]
   prot_ids <- d$ParticipantCode[d$n_at_risk_protein > 0]
   age_ids <- d$ParticipantCode[d$n_at_risk_age > 0]
   message(nm,
-          "\n  at risk with age and sex (", length(full_ids), "): ", paste(sort(full_ids), collapse = ", "),
-          "\n  at risk, proteins only (", length(prot_ids), "): ", paste(sort(prot_ids), collapse = ", "),
-          "\n  at risk, age-adjusted (", length(age_ids), "): ", paste(sort(age_ids), collapse = ", "),
-          "\n  at risk with age and sex but not age-adjusted: ", paste(sort(setdiff(full_ids, age_ids)), collapse = ", "))
+          "\n  close to phenoconversion, with age and sex (", length(full_ids), "): ", paste(sort(full_ids), collapse = ", "),
+          "\n  close to phenoconversion, proteins only (", length(prot_ids), "): ", paste(sort(prot_ids), collapse = ", "),
+          "\n  close to phenoconversion, age-adjusted (", length(age_ids), "): ", paste(sort(age_ids), collapse = ", "),
+          "\n  close with age and sex but not age-adjusted: ", paste(sort(setdiff(full_ids, age_ids)), collapse = ", "))
 }
 
 # # plot to check: protein-only score against age, controls as reference
@@ -3295,12 +3427,12 @@ p_cmp <- ggplot(both, aes(x = `risk_score_NEFL only`, y = `risk_score_Kim et al.
   geom_point(color = "#ad5291", size = 2, alpha = 0.7) +
   ggrepel::geom_text_repel(
     data = both %>% filter(`at_risk_NEFL only` | `at_risk_Kim et al. (10 proteins)`),
-    aes(label = ParticipantCode), size = 3, max.overlaps = Inf) +
+    aes(label = pub_id(ParticipantCode)), size = 3, max.overlaps = Inf) +
   theme_classic(base_size = 12) +
   labs(x = "Risk score, NEFL only", y = "Risk score, Kim et al. signature",
        title = "PGMC risk scores in plasma")
 print(p_cmp)
-ggsave(paste0(sig_dir, "PGMC_risk_NEFL_vs_Kim_PLASMA.pdf"), p_cmp, width = 6, height = 5)
+save_fig(paste0(sig_dir, "PGMC_risk_NEFL_vs_Kim_PLASMA.pdf"), p_cmp, width = 6, height = 5)
 
 # heatmap
 st <- by_participant %>%
@@ -3317,7 +3449,7 @@ rownames(status_all) <- rownames(score_all_mat) <- st$ParticipantCode
 
 n_full <- rowSums(status_all > 0, na.rm = TRUE)
 ord <- order(-n_full, -rowMeans(score_all_mat, na.rm = TRUE))
-print(table(`models at risk` = n_full))
+print(table(`models with closeness > 0` = n_full))
 
 status_num <- status_all[ord, ]
 score_ord <- score_all_mat[ord, ]
@@ -3329,13 +3461,14 @@ models_col <- c("0" = "white", "1" = "#F3E5EE", "2" = "#E8CDE0", "3" = "#D9A6C8"
 
 ht_risk <- Heatmap(
   status_chr,
-  name = "At risk",
+  name = "Closeness to\nphenoconversion",
   col = risk_col,
   na_col = "white",
   cluster_rows = FALSE,
   cluster_columns = FALSE,
   row_names_gp = gpar(fontsize = 8,
                       fontface = ifelse(rownames(status_chr) %in% converted_ids, "bold", "plain")),
+  row_labels = pub_id(rownames(status_chr)),  
   column_names_gp = gpar(fontsize = 8),
   column_names_rot = 45,
   rect_gp = gpar(col = "white", lwd = 1),
@@ -3345,25 +3478,66 @@ ht_risk <- Heatmap(
     annotation_name_gp = gpar(fontsize = 9, fontface = "bold"),
     simple_anno_size = unit(0.35, "cm")),
   right_annotation = rowAnnotation(
-    `Models at risk` = as.character(n_full[ord]),
-    col = list(`Models at risk` = models_col),
+    `Models with closeness > 0` = as.character(n_full[ord]),
+    col = list(`Models with closeness > 0` = models_col),
     annotation_name_gp = gpar(fontsize = 9, fontface = "bold"),
     simple_anno_size = unit(0.35, "cm")),
   heatmap_legend_param = list(at = c("0", "1", "2"),
-                              labels = c("Not at risk", "At risk in some samples", "At risk")),
+                              labels = c("Score <= 0", "Score > 0 in some samples", "Score > 0 in all samples")),
   layer_fun = function(j, i, x, y, w, h, fill) {
     # numbers: highest risk score of the participant
     v <- pindex(score_ord, i, j)
     grid.text(ifelse(is.na(v), "", sprintf("%.1f", v)), x, y, gp = gpar(fontsize = 6))
   },
-  column_title = "PGMC at risk in plasma",
+  column_title = "PGMC calculated closeness to phenoconversion in plasma",
   column_title_gp = gpar(fontsize = 11, fontface = "bold")
 )
 
-pdf(paste0(sig_dir, "PGMC_at_risk_heatmap_PLASMA.pdf"), width = 10,
-    height = max(5, 0.17 * nrow(status_chr) + 2.5))
-draw(ht_risk)
-dev.off()
+with_fig(paste0(sig_dir, "PGMC_closeness_heatmap_PLASMA.pdf"), width = 10,
+         height = max(5, 0.17 * nrow(status_chr) + 2.5), expr = {
+           draw(ht_risk)
+         })
+
+# continuous version
+cont_lim <- quantile(score_ord, c(0.05, 0.95), na.rm = TRUE)
+cont_lim[1] <- min(cont_lim[1], -1e-6)   # keep 0 (decision boundary) inside the scale
+cont_lim[2] <- max(cont_lim[2],  1e-6)
+cont_col <- circlize::colorRamp2(
+  c(cont_lim[1], 0, mean(c(0, cont_lim[2])), cont_lim[2]),
+  c("#F7F0F5", "#EBD3E3", "#AD5291", "#4A1238"))
+
+ht_risk_cont <- Heatmap(
+  score_ord,
+  name = "Calculated closeness\nto phenoconversion",
+  col = cont_col,
+  na_col = "white",
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  row_names_gp = gpar(fontsize = 8,
+                      fontface = ifelse(rownames(score_ord) %in% converted_ids, "bold", "plain")),
+  row_labels = pub_id(rownames(score_ord)),
+  column_names_gp = gpar(fontsize = 8),
+  column_names_rot = 45,
+  rect_gp = gpar(col = "white", lwd = 1),
+  left_annotation = rowAnnotation(
+    Converter = ifelse(rownames(score_ord) %in% converted_ids, "Yes", "No"),
+    col = list(Converter = c(Yes = "black", No = "white")),
+    annotation_name_gp = gpar(fontsize = 9, fontface = "bold"),
+    simple_anno_size = unit(0.35, "cm")),
+  heatmap_legend_param = list(at = c(cont_lim[1],cont_lim[2]),
+                              labels = c("Lower", "Higher")),
+  layer_fun = function(j, i, x, y, w, h, fill) {
+    v <- pindex(score_ord, i, j)
+    grid.text(ifelse(is.na(v), "", sprintf("%.1f", v)), x, y, gp = gpar(fontsize = 6))
+  },
+  column_title = "PGMC calculated closeness to phenoconversion in plasma",
+  column_title_gp = gpar(fontsize = 11, fontface = "bold")
+)
+
+with_fig(paste0(sig_dir, "PGMC_closeness_heatmap_PLASMA_continuous.pdf"), width = 10,
+         height = max(5, 0.17 * nrow(score_ord) + 2.5), expr = {
+           draw(ht_risk_cont)
+         })
 
 # PCA ofall samples with plasma and the proteins of each signature
 
@@ -3412,7 +3586,7 @@ pca_plot <- function(df) {
     geom_point(data = df %>% filter(type != "PGMC"), size = 2, alpha = 0.6) +
     geom_point(data = df %>% filter(type == "PGMC"), size = 2.8, alpha = 0.9) +
     geom_point(data = conv, shape = 1, size = 5, color = "black", stroke = 0.8) +
-    ggrepel::geom_text_repel(data = conv, aes(label = ParticipantCode), color = "black",
+    ggrepel::geom_text_repel(data = conv, aes(label = pub_id(ParticipantCode)), color = "black",
                              size = 3, max.overlaps = Inf) +
     scale_color_manual(values = grp_cols, name = NULL) +
     theme_classic(base_size = 12) +
@@ -3424,7 +3598,7 @@ pca_plot <- function(df) {
 p_pca <- pca_plot(pca_df) +
   facet_wrap(~signature, scales = "free", ncol = 2) 
 print(p_pca)
-ggsave(paste0(sig_dir, "PCA_signatures_PLASMA.pdf"), p_pca, width = 10, height = 9)
+save_fig(paste0(sig_dir, "PCA_signatures_PLASMA.pdf"), p_pca, width = 10, height = 9)
 
 # and one file per signature
 for (nm in pca_sigs) {
@@ -3434,5 +3608,142 @@ for (nm in pca_sigs) {
     labs(x = d$pc1_lab[1], y = d$pc2_lab[1],
          title = paste0("PCA of ", nm, " signature"))
   print(p)
-  ggsave(paste0(sig_dir, "PCA_", gsub("[^A-Za-z0-9]+", "_", nm), "_PLASMA.pdf"), p, width = 6.5, height = 6)
+  save_fig(paste0(sig_dir, "PCA_", gsub("[^A-Za-z0-9]+", "_", nm), "_PLASMA.pdf"), p, width = 6.5, height = 6)
 }
+
+
+##############################################################################
+## NEFL vs pTau-181 scatter plot
+grp_cols <- c(CTR = "#6F8EB2", ALS = "#B2936F", PGMC = "#ad5291")
+scatter_per_participant <- FALSE   # TRUE: means one point per participant, with average of samples
+show_trend_line         <- TRUE    # diagonal line
+cor_covariates <- c("age", "sex_male", "center_Turkey")
+adj_label      <- paste(sub("center_Turkey", "center", sub("sex_male", "sex", cor_covariates)), collapse = ", ")
+
+# raw NPQ
+sc_df <- all_data %>%
+  filter(panel == "CNS", SampleMatrixType == "PLASMA",
+         Target %in% c("NEFL", "pTau-181"), type %in% c("CTR", "ALS", "PGMC")) %>%
+  group_by(SampleName, ParticipantCode, type, Target) %>%
+  summarise(NPQ = mean(NPQ, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = Target, values_from = NPQ) %>%
+  rename(nefl = NEFL, ptau = `pTau-181`) %>%
+  left_join(covariate_table %>% select(SampleName, any_of(c("age", "sex_male", "center_Turkey"))),
+            by = "SampleName") %>%
+  mutate(type = factor(type, levels = c("CTR", "ALS", "PGMC"))) %>%
+  filter(!is.na(nefl), !is.na(ptau))
+
+if (scatter_per_participant) {
+  sc_df <- sc_df %>%
+    group_by(ParticipantCode, type) %>%
+    summarise(across(any_of(c("age", "sex_male", "center_Turkey", "nefl", "ptau")), ~ mean(.x, na.rm = TRUE)),
+              SampleName = first(SampleName), .groups = "drop")
+}
+
+# Spearman correlation of the two proteins in each group (raw and partial correlation with adjustment)
+partial_spearman <- function(x, y, Z) {
+  d <- data.frame(x = x, y = y, Z)
+  d <- d[complete.cases(d), , drop = FALSE]
+  Zr <- d[, -(1:2), drop = FALSE]
+  Zr <- Zr[, vapply(Zr, function(v) length(unique(v)) > 1, logical(1)), drop = FALSE]
+  Zr[] <- lapply(Zr, function(v) if (is.numeric(v) && length(unique(v)) > 2) rank(v) else v)
+  k <- ncol(Zr)
+  if (nrow(d) < k + 5) return(c(rho = NA_real_, p = NA_real_))
+  if (k == 0) {
+    rx <- rank(d$x); ry <- rank(d$y)
+  } else {
+    rx <- resid(lm(rank(d$x) ~ ., data = Zr))
+    ry <- resid(lm(rank(d$y) ~ ., data = Zr))
+  }
+  r  <- cor(rx, ry)
+  df <- nrow(d) - 2 - k
+  t  <- r * sqrt(df / (1 - r^2))
+  c(rho = r, p = 2 * pt(-abs(t), df))
+}
+
+cor_tab <- sc_df %>%
+  group_by(type) %>%
+  summarise(
+    n   = n(),
+    rho = suppressWarnings(cor(nefl, ptau, method = "spearman")),
+    p   = suppressWarnings(cor.test(nefl, ptau, method = "spearman", exact = FALSE)$p.value),
+    pa  = list(partial_spearman(nefl, ptau, across(all_of(cor_covariates)))),
+    .groups = "drop") %>%
+  mutate(rho_adj = map_dbl(pa, "rho"),
+         p_adj   = map_dbl(pa, "p"),
+         label   = ifelse(type == "PGMC", "AGMC", as.character(type)),
+         txt     = sprintf("%s (n = %d): Spearman rho = %.2f (p = %s); adjusted rho = %.2f (p = %s)",
+                           label, n, rho, signif(p, 2), rho_adj, signif(p_adj, 2))) %>%
+  select(-pa)
+print(as.data.frame(cor_tab))
+cor_txt <- paste0(paste(cor_tab$txt, collapse = "\n"))
+
+# values with the covariates removed 
+sc_adj <- sc_df %>% filter(if_all(all_of(cor_covariates), ~ !is.na(.x)))
+if (nrow(sc_adj) < nrow(sc_df))
+  message(nrow(sc_df) - nrow(sc_adj), " samples without ", adj_label, " are left out of the adjusted plot")
+as_batch <- function(v) if (v %in% cor_covariates && length(unique(sc_adj[[v]])) > 1) factor(sc_adj[[v]]) else NULL
+adj_mat <- limma::removeBatchEffect(
+  t(as.matrix(sc_adj[, c("nefl", "ptau")])),
+  batch      = as_batch("sex_male"),
+  batch2     = as_batch("center_Turkey"),
+  covariates = if ("age" %in% cor_covariates) sc_adj$age else NULL,
+  design     = model.matrix(~ type, data = sc_adj))
+sc_adj$nefl <- adj_mat["nefl", ]
+sc_adj$ptau <- adj_mat["ptau", ]
+
+# axes follow the data 
+pad <- function(x) { r <- range(x, na.rm = TRUE); r + c(-1, 1) * 0.05 * diff(r) }
+
+scatter_base <- function(d, xlab, ylab, title) {
+  ggplot(d, aes(x = nefl, y = ptau)) +
+    coord_cartesian(xlim = pad(d$nefl), ylim = pad(d$ptau)) +
+    theme_classic(base_size = 12) +
+    theme(plot.subtitle = element_text(size = 8.5)) +
+    labs(x = xlab, y = ylab, title = title, subtitle = cor_txt)
+}
+
+conv_of <- function(d) d %>% filter(type == "PGMC", ParticipantCode %in% converted_ids)
+
+# by group, converters ringed and labelled
+group_scatter <- function(d, ...) {
+  conv <- conv_of(d)
+  scatter_base(d, ...) +
+    { if (show_trend_line)
+      geom_smooth(aes(color = type, group = type), method = "lm", formula = y ~ x,
+                  se = FALSE, linetype = "dashed", linewidth = 0.6) } +
+    geom_point(data = filter(d, type == "CTR"),  aes(color = type), size = 2,   alpha = 0.6) +
+    geom_point(data = filter(d, type == "ALS"),  aes(color = type), size = 2,   alpha = 0.6) +
+    geom_point(data = filter(d, type == "PGMC"), aes(color = type), size = 2.8, alpha = 0.9) +
+    geom_point(data = conv, shape = 1, size = 5, color = "black", stroke = 0.8) +
+    ggrepel::geom_text_repel(data = conv, aes(label = pub_id(ParticipantCode)),
+                             color = "black", size = 3, max.overlaps = Inf) +
+    scale_color_manual(values = grp_cols, labels = c(CTR = "CTR", ALS = "ALS", PGMC = "AGMC"), name = NULL) +
+    theme(legend.position = "bottom")
+}
+
+# (1) raw NPQ
+p_scatter <- group_scatter(sc_df, "NEFL (NPQ)", "pTau-181 (NPQ)", "NEFL vs pTau-181 in plasma")
+print(p_scatter)
+save_fig(paste0(sig_dir, "NEFL_vs_pTau181_PLASMA.pdf"), p_scatter, width = 7, height = 7.4)
+
+# (2) adjusted values 
+p_scatter_adj <- group_scatter(sc_adj,
+                               paste0("NEFL (NPQ adjusted"),
+                               paste0("pTau-181 (NPQ adjusted)"),
+                               "NEFL vs pTau-181 in plasma (adjusted)")
+print(p_scatter_adj)
+save_fig(paste0(sig_dir, "NEFL_vs_pTau181_PLASMA_adjusted.pdf"), p_scatter_adj, width = 7, height = 7.4)
+
+# (3) raw NPQ coloured by age 
+p_scatter_age <- scatter_base(sc_df, "NEFL (NPQ)", "pTau-181 (NPQ)", "NEFL vs pTau-181 in plasma") +
+  geom_point(aes(color = age, shape = type), size = 2.6, alpha = 0.85) +
+  geom_point(data = conv_of(sc_df), shape = 1, size = 5, color = "black", stroke = 0.8) +
+  ggrepel::geom_text_repel(data = conv_of(sc_df), aes(label = pub_id(ParticipantCode)),
+                           color = "black", size = 3, max.overlaps = Inf) +
+  scale_color_viridis_c(option = "magma", end = 0.9, name = "Age") +
+  scale_shape_manual(values = c(CTR = 16, ALS = 17, PGMC = 15),
+                     labels = c(CTR = "CTR", ALS = "ALS", PGMC = "AGMC"), name = NULL) +
+  theme(legend.position = "right")
+print(p_scatter_age)
+save_fig(paste0(sig_dir, "NEFL_vs_pTau181_PLASMA_by_age.pdf"), p_scatter_age, width = 8.5, height = 7.4)

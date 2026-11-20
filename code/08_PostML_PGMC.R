@@ -1,12 +1,11 @@
 ## ================================================================================
 ## PGMC selection & protein signature overlap: Venn diagrams + summary heatmap
 
-
 ## ------------------------------------------------------------------
 ## HELPER FUNCTIONS
 ## ------------------------------------------------------------------
 
-## PGMC patients classified as "at risk" (ALS_risk_score > 0) 
+## PGMC patients with a positive calculated closeness to phenoconversion (ALS_risk_score > 0)
 get_selected_pgmc <- function(model_result) {
   model_result$results %>%
     left_join(protein_data_IDs %>% select(SampleName, ParticipantCode, type), by = "SampleName") %>%
@@ -15,16 +14,22 @@ get_selected_pgmc <- function(model_result) {
     pull(ParticipantCode)
 }
 
+## Continuous version: highest score of each PGMC (over its samples) in one model
+get_pgmc_scores <- function(model_result) {
+  model_result$results %>%
+    left_join(protein_data_IDs %>% select(SampleName, ParticipantCode, type), by = "SampleName") %>%
+    distinct() %>%
+    filter(type == "PGMC") %>%
+    group_by(ParticipantCode) %>%
+    summarise(score = max(ALS_risk_score, na.rm = TRUE), .groups = "drop")
+}
+
 ## Proteins with nonzero coefficient in the locked model 
 get_selected_proteins <- function(model_result, covariate_cols = c("age", "sex_male"),
                                   normalize_panel_suffix = TRUE) {
   coef_df <- model_result$coefficients
   
   value_col <- setdiff(names(coef_df), "feature")
-  if (length(value_col) != 1) {
-    stop("Expected exactly one non-'feature' column in model_result$coefficients, found: ",
-         paste(value_col, collapse = ", "), ". Inspect names(model_result$coefficients) and adjust.")
-  }
   
   proteins <- coef_df %>%
     filter(feature != "(Intercept)", !feature %in% covariate_cols, .data[[value_col]] != 0) %>%
@@ -44,7 +49,7 @@ shorten_labels <- function(names_vec) {
   token_matrix <- do.call(rbind, token_lists)
   
   varies <- apply(token_matrix, 2, function(col) length(unique(col)) > 1)
-  if (!any(varies)) return(names_vec)  # nothing varies -- fall back to full names
+  if (!any(varies)) return(names_vec)  
   
   apply(token_matrix[, varies, drop = FALSE], 1, function(row) paste(na.omit(row), collapse = "_"))
 }
@@ -55,7 +60,7 @@ compute_venn_regions <- function(sets) {
   n <- length(set_names)
   region_list <- list()
   
-  for (k in n:1) {   # largest combinations first (most informative) down to singles
+  for (k in n:1) {  
     combos <- combn(set_names, k, simplify = FALSE)
     for (combo in combos) {
       in_these <- Reduce(intersect, sets[combo])
@@ -90,7 +95,7 @@ make_venn_patients <- function(model_names, title, plot_path = NULL) {
           plot.margin = margin(t = 1, r = 3, b = 1, l = 3, unit = "cm"))
   
   if (!is.null(plot_path)) {
-    ggsave(plot_path, p, width = 9, height = 7)
+    save_fig(plot_path, p, width = 9, height = 7)
     save_venn_regions(sets, gsub("\\.pdf$", "_ids.txt", plot_path))
   }
   p
@@ -108,7 +113,7 @@ make_venn_proteins <- function(model_names, title, plot_path = NULL, normalize_p
           plot.margin = margin(t = 1, r = 3, b = 1, l = 3, unit = "cm"))
   
   if (!is.null(plot_path)) {
-    ggsave(plot_path, p, width = 9, height = 7)
+    save_fig(plot_path, p, width = 9, height = 7)
     save_venn_regions(sets, gsub("\\.pdf$", "_proteins.txt", plot_path))
   }
   p
@@ -181,14 +186,14 @@ model_registry <- list(
 
 ## Lasso: SERUM and PLASMA only
 make_venn_patients(c("Lasso_SERUM_both","Lasso_SERUM_CNS","Lasso_SERUM_IMMUNE"),
-                   "PGMC selected as at-risk: Lasso, SERUM",
+                   "PGMC with closeness score > 0: Lasso, SERUM",
                    "plots/venn/patients_lasso_SERUM.pdf")
 make_venn_proteins(c("Lasso_SERUM_both","Lasso_SERUM_CNS","Lasso_SERUM_IMMUNE"),
                    "Signature overlap: Lasso, SERUM",
                    "plots/venn/proteins_lasso_SERUM.pdf")
 
 make_venn_patients(c("Lasso_PLASMA_both","Lasso_PLASMA_CNS","Lasso_PLASMA_IMMUNE"),
-                   "PGMC selected as at-risk: Lasso, PLASMA",
+                   "PGMC with closeness score > 0: Lasso, PLASMA",
                    "plots/venn/patients_lasso_PLASMA.pdf")
 make_venn_proteins(c("Lasso_PLASMA_both","Lasso_PLASMA_CNS","Lasso_PLASMA_IMMUNE"),
                    "Signature overlap: Lasso, PLASMA",
@@ -197,7 +202,7 @@ make_venn_proteins(c("Lasso_PLASMA_both","Lasso_PLASMA_CNS","Lasso_PLASMA_IMMUNE
 ## Elastic Net: SERUM, PLASMA, CSF
 for (fl in c("SERUM", "PLASMA", "CSF")) {
   models <- c(paste0("EN_", fl, "_both"), paste0("EN_", fl, "_CNS"), paste0("EN_", fl, "_IMMUNE"))
-  make_venn_patients(models, paste0("PGMC selected as at-risk: Elastic Net, ", fl),
+  make_venn_patients(models, paste0("PGMC with closeness score > 0: Elastic Net, ", fl),
                      paste0("plots/venn/patients_EN_", fl, ".pdf"))
   make_venn_proteins(models, paste0("Signature overlap: Elastic Net, ", fl),
                      paste0("plots/venn/proteins_EN_", fl, ".pdf"))
@@ -206,7 +211,7 @@ for (fl in c("SERUM", "PLASMA", "CSF")) {
 ## Venn set across fluids, within one panel mode 
 for (pm in c("both", "CNS", "IMMUNE")) {
   models <- c(paste0("EN_SERUM_", pm), paste0("EN_PLASMA_", pm), paste0("EN_CSF_", pm))
-  make_venn_patients(models, paste0("PGMC selected as at-risk across fluids (Elastic Net, ", pm, ")"),
+  make_venn_patients(models, paste0("PGMC with closeness score > 0 across fluids (Elastic Net, ", pm, ")"),
                      paste0("plots/venn/patients_EN_across_fluids_", pm, ".pdf"))
   make_venn_proteins(models, paste0("Signature overlap across fluids (Elastic Net, ", pm, ")"),
                      paste0("plots/venn/proteins_EN_across_fluids_", pm, ".pdf"),
@@ -216,7 +221,7 @@ for (pm in c("both", "CNS", "IMMUNE")) {
 ## Lasso across fluids is only a 2-set comparison (SERUM vs PLASMA, no CSF)
 for (pm in c("both", "CNS", "IMMUNE")) {
   models <- c(paste0("Lasso_SERUM_", pm), paste0("Lasso_PLASMA_", pm))
-  make_venn_patients(models, paste0("PGMC selected as at-risk, Lasso SERUM vs PLASMA (", pm, ")"),
+  make_venn_patients(models, paste0("PGMC with closeness score > 0, Lasso SERUM vs PLASMA (", pm, ")"),
                      paste0("plots/venn/patients_Lasso_across_fluids_", pm, ".pdf"))
   make_venn_proteins(models, paste0("Signature overlap, Lasso SERUM vs PLASMA (", pm, ")"),
                      paste0("plots/venn/proteins_Lasso_across_fluids_", pm, ".pdf"),
@@ -231,7 +236,18 @@ clinical_data_extra_heatmap = read_excel("data input/all_participants_ID_visits.
 
 # gt PGMCs and data of fluids
 all_pgmc_ids <- protein_data_IDs %>% filter(type == "PGMC") %>% pull(ParticipantCode) %>% unique()
-selection_matrix <- as.matrix(selection_wide[, names(model_registry)])  
+selection_matrix <- as.matrix(selection_wide[, names(model_registry)])
+
+# continuous score
+score_matrix <- purrr::imap_dfr(model_registry, function(model_result, model_name) {
+  tibble(ParticipantCode = all_pgmc_ids, model = model_name) %>%
+    left_join(get_pgmc_scores(model_result), by = "ParticipantCode")
+}) %>%
+  pivot_wider(names_from = model, values_from = score) %>%
+  column_to_rownames("ParticipantCode") %>%
+  as.matrix()
+score_matrix <- score_matrix[rownames(selection_matrix), colnames(selection_matrix), drop = FALSE]
+score_matrix[!is.finite(score_matrix)] <- NA  
 column_split_fluid <- factor(model_fluid[colnames(selection_matrix)],
                              levels = c("SERUM", "PLASMA", "CSF"))
 
@@ -322,6 +338,13 @@ names(mutation_col) <- mutation_levels
 extra <- is.na(mutation_col)
 if (any(extra)) mutation_col[extra] <- hcl.colors(sum(extra), "Pastel 1")
 binary_col <- c(`0` = "grey95", `1` = "#AD5291")
+
+score_lim <- quantile(score_matrix, c(0.05, 0.95), na.rm = TRUE)
+score_lim[1] <- min(score_lim[1], -1e-6)       # keep 0 (the decision boundary) inside the scale
+score_lim[2] <- max(score_lim[2],  1e-6)
+continuous_col <- circlize::colorRamp2(
+  c(score_lim[1], 0, mean(c(0, score_lim[2])), score_lim[2]),
+  c("#F7F0F5", "#EBD3E3", "#AD5291", "#4A1238"))
 age_col    <- colorRamp2(range(age_v0_vec, na.rm = TRUE), c("grey95", "#7B4F9E"))
 motor_col  <- colorRamp2(c(0, 8), c("white", "red"))
 
@@ -347,17 +370,23 @@ lgd_markers <- Legend(
 )
 
 # heatmap builder
-n_models <- ncol(selection_matrix)             # models tried
+n_models <- ncol(selection_matrix)            
 freq_models <- rowSums(selection_matrix)       # in how many of the models each PGMC was selected
 
-make_pgmc_summary_heatmap <- function(fluids, output_path, width = 17, height = 10, show_freq = FALSE) {
+make_pgmc_summary_heatmap <- function(fluids, output_path, width = 17, height = 10, show_freq = FALSE,
+                                      continuous = FALSE, show_values = FALSE) {
   
   cols_keep <- colnames(selection_matrix)[column_split_fluid %in% fluids]
   mat <- selection_matrix[, cols_keep, drop = FALSE]
   multi <- length(fluids) > 1
   
   # no clustering: PGMC selected most often first
-  ord <- order(-rowSums(mat), -freq_models[rownames(mat)], rownames(mat))
+  ord <- order(-rowSums(mat), -freq_models[rownames(mat)], pub_id(rownames(mat))) 
+  if (continuous) {
+    sc <- score_matrix[, cols_keep, drop = FALSE]
+    ord <- order(-rowMeans(sc, na.rm = TRUE), pub_id(rownames(sc)))
+    mat <- sc
+  }
   mat <- mat[ord, , drop = FALSE]
   ids <- rownames(mat)
   motor_ord <- motor_mat[ids, , drop = FALSE]
@@ -365,19 +394,25 @@ make_pgmc_summary_heatmap <- function(fluids, output_path, width = 17, height = 
   
   ht_main <- Heatmap(
     mat,
-    name = "At-risk\n(score > 0)",
-    col = binary_col,
+    name = if (continuous) "Calculated closeness\nto phenoconversion" else "Closeness to\nphenoconversion\n(score > 0)",
+    col = if (continuous) continuous_col else binary_col,
+    na_col = "white",
+    rect_gp = if (continuous) gpar(col = "white", lwd = 0.5) else gpar(col = NA),
+    layer_fun = if (continuous && show_values) function(j, i, x, y, w, h, fill) {
+      v <- pindex(mat, i, j)
+      grid.text(ifelse(is.na(v), "", sprintf("%.1f", v)), x, y, gp = gpar(fontsize = 5))
+    } else NULL,
     column_split = if (multi) droplevels(column_split_fluid[column_split_fluid %in% fluids]) else NULL,
     cluster_column_slices = FALSE,
     cluster_rows = FALSE,
     cluster_columns = FALSE,
     show_row_names = TRUE,
     row_names_side = "left",
-    row_labels = ids,
+    row_labels = pub_id(ids),   # publication IDs (display only)
     row_names_gp = gpar(fontsize = 7),
     column_names_gp = gpar(fontsize = 8),
     column_names_rot = 45,
-    column_title = if (multi) as.character(fluids) else paste0("PGMC risk classification in ", fluids),
+    column_title = if (multi) as.character(fluids) else paste0("PGMC calculated closeness to phenoconversion in ", fluids),
     column_title_gp = gpar(fontsize = 12, fontface = "bold"),
     # extra column: in how many of the models the PGMC was selected
     right_annotation = if (show_freq) rowAnnotation(
@@ -385,14 +420,18 @@ make_pgmc_summary_heatmap <- function(fluids, output_path, width = 17, height = 
                           gp = gpar(fill = "#AD5291", col = NA),
                           axis_param = list(at = pretty(c(0, n_models), 3), gp = gpar(fontsize = 7))),
       n = anno_text(paste0(freq_ord, "/", n_models), gp = gpar(fontsize = 7)),
-      annotation_label = c(paste0("Selected in models")),
+      annotation_label = c("Models with score > 0"),
       show_annotation_name = c(TRUE, FALSE),
       annotation_name_gp = gpar(fontsize = 9, fontface = "bold")
     ) else NULL,
-    heatmap_legend_param = list(
-      title = "At-risk\n(score > 0)",
+    heatmap_legend_param = if (continuous) list(
+      title = "Calculated closeness\nto phenoconversion",
+      at = c(score_lim[1], 0, score_lim[2]),
+      labels = c("Lower", "Boundary (0)", "Higher")
+    ) else list(
+      title = "Closeness to\nphenoconversion\n(score > 0)",
       at = c("0", "1"),
-      labels = c("Not selected", "Selected")
+      labels = c("Score <= 0", "Score > 0")
     )
   )
   
@@ -415,7 +454,7 @@ make_pgmc_summary_heatmap <- function(fluids, output_path, width = 17, height = 
     cluster_columns = FALSE,
     show_row_names = TRUE,
     row_names_side = "right",
-    row_labels = ids,
+    row_labels = pub_id(ids),   
     row_names_gp = gpar(fontsize = 7),
     column_names_gp = gpar(fontsize = 9),
     column_names_rot = 0,
@@ -425,7 +464,6 @@ make_pgmc_summary_heatmap <- function(fluids, output_path, width = 17, height = 
     width = unit(ncol(motor_ord) * 6, "mm"),
     heatmap_legend_param = list(at = 0:8),
     layer_fun = function(j, i, x, y, w, h, fill) {
-      # tiles first, then markers on top so neighbouring tiles do not cover them
       grid.rect(x, y, w, h, gp = gpar(fill = fill, col = "grey60", lwd = 0.5))
       keys <- paste(rownames(motor_ord)[i], j)
       
@@ -443,11 +481,11 @@ make_pgmc_summary_heatmap <- function(fluids, output_path, width = 17, height = 
     }
   )
   
-  pdf(output_path, width = width, height = height)
-  draw(ht_main + ht_motor,
-       annotation_legend_list = list(lgd_markers),
-       merge_legends = TRUE)
-  dev.off()
+  with_fig(output_path, width = width, height = height, expr = {
+    draw(ht_main + ht_motor,
+         annotation_legend_list = list(lgd_markers),
+         merge_legends = TRUE)
+  })
   
   invisible(ht_main + ht_motor)
 }
@@ -459,3 +497,13 @@ ht_all    <- make_pgmc_summary_heatmap(c("SERUM", "PLASMA", "CSF"),
 ht_serum  <- make_pgmc_summary_heatmap("SERUM",  "plots/venn/PGMC_summary_heatmap_SERUM.pdf",  width = 10)
 ht_plasma <- make_pgmc_summary_heatmap("PLASMA", "plots/venn/PGMC_summary_heatmap_PLASMA.pdf", width = 10)
 ht_csf    <- make_pgmc_summary_heatmap("CSF",    "plots/venn/PGMC_summary_heatmap_CSF.pdf",    width = 10)
+
+ht_all_cont    <- make_pgmc_summary_heatmap(c("SERUM", "PLASMA", "CSF"),
+                                            "plots/venn/PGMC_summary_heatmap_all_fluids_continuous.pdf",
+                                            width = 17, show_freq = TRUE, continuous = TRUE)
+ht_serum_cont  <- make_pgmc_summary_heatmap("SERUM",  "plots/venn/PGMC_summary_heatmap_SERUM_continuous.pdf",
+                                            width = 10, continuous = TRUE, show_values = TRUE)
+ht_plasma_cont <- make_pgmc_summary_heatmap("PLASMA", "plots/venn/PGMC_summary_heatmap_PLASMA_continuous.pdf",
+                                            width = 10, continuous = TRUE, show_values = TRUE)
+ht_csf_cont    <- make_pgmc_summary_heatmap("CSF",    "plots/venn/PGMC_summary_heatmap_CSF_continuous.pdf",
+                                            width = 10, continuous = TRUE, show_values = TRUE)
