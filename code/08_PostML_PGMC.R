@@ -186,14 +186,14 @@ model_registry <- list(
 
 ## Lasso: SERUM and PLASMA only
 make_venn_patients(c("Lasso_SERUM_both","Lasso_SERUM_CNS","Lasso_SERUM_IMMUNE"),
-                   "PGMC with closeness score > 0: Lasso, SERUM",
+                   "PGMC with estimated proximity score > 0: Lasso, SERUM",
                    "plots/venn/patients_lasso_SERUM.pdf")
 make_venn_proteins(c("Lasso_SERUM_both","Lasso_SERUM_CNS","Lasso_SERUM_IMMUNE"),
                    "Signature overlap: Lasso, SERUM",
                    "plots/venn/proteins_lasso_SERUM.pdf")
 
 make_venn_patients(c("Lasso_PLASMA_both","Lasso_PLASMA_CNS","Lasso_PLASMA_IMMUNE"),
-                   "PGMC with closeness score > 0: Lasso, PLASMA",
+                   "PGMC with estimated proximity score > 0: Lasso, PLASMA",
                    "plots/venn/patients_lasso_PLASMA.pdf")
 make_venn_proteins(c("Lasso_PLASMA_both","Lasso_PLASMA_CNS","Lasso_PLASMA_IMMUNE"),
                    "Signature overlap: Lasso, PLASMA",
@@ -202,7 +202,7 @@ make_venn_proteins(c("Lasso_PLASMA_both","Lasso_PLASMA_CNS","Lasso_PLASMA_IMMUNE
 ## Elastic Net: SERUM, PLASMA, CSF
 for (fl in c("SERUM", "PLASMA", "CSF")) {
   models <- c(paste0("EN_", fl, "_both"), paste0("EN_", fl, "_CNS"), paste0("EN_", fl, "_IMMUNE"))
-  make_venn_patients(models, paste0("PGMC with closeness score > 0: Elastic Net, ", fl),
+  make_venn_patients(models, paste0("PGMC with estimated proximity score > 0: Elastic Net, ", fl),
                      paste0("plots/venn/patients_EN_", fl, ".pdf"))
   make_venn_proteins(models, paste0("Signature overlap: Elastic Net, ", fl),
                      paste0("plots/venn/proteins_EN_", fl, ".pdf"))
@@ -211,7 +211,7 @@ for (fl in c("SERUM", "PLASMA", "CSF")) {
 ## Venn set across fluids, within one panel mode 
 for (pm in c("both", "CNS", "IMMUNE")) {
   models <- c(paste0("EN_SERUM_", pm), paste0("EN_PLASMA_", pm), paste0("EN_CSF_", pm))
-  make_venn_patients(models, paste0("PGMC with closeness score > 0 across fluids (Elastic Net, ", pm, ")"),
+  make_venn_patients(models, paste0("PGMC with estimated proximity score > 0 across fluids (Elastic Net, ", pm, ")"),
                      paste0("plots/venn/patients_EN_across_fluids_", pm, ".pdf"))
   make_venn_proteins(models, paste0("Signature overlap across fluids (Elastic Net, ", pm, ")"),
                      paste0("plots/venn/proteins_EN_across_fluids_", pm, ".pdf"),
@@ -221,7 +221,7 @@ for (pm in c("both", "CNS", "IMMUNE")) {
 ## Lasso across fluids is only a 2-set comparison (SERUM vs PLASMA, no CSF)
 for (pm in c("both", "CNS", "IMMUNE")) {
   models <- c(paste0("Lasso_SERUM_", pm), paste0("Lasso_PLASMA_", pm))
-  make_venn_patients(models, paste0("PGMC with closeness score > 0, Lasso SERUM vs PLASMA (", pm, ")"),
+  make_venn_patients(models, paste0("PGMC with estimated proximity score > 0, Lasso SERUM vs PLASMA (", pm, ")"),
                      paste0("plots/venn/patients_Lasso_across_fluids_", pm, ".pdf"))
   make_venn_proteins(models, paste0("Signature overlap, Lasso SERUM vs PLASMA (", pm, ")"),
                      paste0("plots/venn/proteins_Lasso_across_fluids_", pm, ".pdf"),
@@ -345,6 +345,8 @@ score_lim[2] <- max(score_lim[2],  1e-6)
 continuous_col <- circlize::colorRamp2(
   c(score_lim[1], 0, mean(c(0, score_lim[2])), score_lim[2]),
   c("#F7F0F5", "#EBD3E3", "#AD5291", "#4A1238"))
+# ticks of the colour bar (score values)
+legend_at <- c(score_lim[1], 0, score_lim[2])   # minimum, 0 (decision boundary), maximum
 age_col    <- colorRamp2(range(age_v0_vec, na.rm = TRUE), c("grey95", "#7B4F9E"))
 motor_col  <- colorRamp2(c(0, 8), c("white", "red"))
 
@@ -374,7 +376,7 @@ n_models <- ncol(selection_matrix)
 freq_models <- rowSums(selection_matrix)       # in how many of the models each PGMC was selected
 
 make_pgmc_summary_heatmap <- function(fluids, output_path, width = 17, height = 10, show_freq = FALSE,
-                                      continuous = FALSE, show_values = FALSE) {
+                                      continuous = FALSE) {
   
   cols_keep <- colnames(selection_matrix)[column_split_fluid %in% fluids]
   mat <- selection_matrix[, cols_keep, drop = FALSE]
@@ -394,14 +396,10 @@ make_pgmc_summary_heatmap <- function(fluids, output_path, width = 17, height = 
   
   ht_main <- Heatmap(
     mat,
-    name = if (continuous) "Calculated closeness\nto phenoconversion" else "Closeness to\nphenoconversion\n(score > 0)",
+    name = if (continuous) "Estimated proximity\nto phenoconversion" else "Estimated proximity\nto phenoconversion\n(score > 0)",
     col = if (continuous) continuous_col else binary_col,
     na_col = "white",
     rect_gp = if (continuous) gpar(col = "white", lwd = 0.5) else gpar(col = NA),
-    layer_fun = if (continuous && show_values) function(j, i, x, y, w, h, fill) {
-      v <- pindex(mat, i, j)
-      grid.text(ifelse(is.na(v), "", sprintf("%.1f", v)), x, y, gp = gpar(fontsize = 5))
-    } else NULL,
     column_split = if (multi) droplevels(column_split_fluid[column_split_fluid %in% fluids]) else NULL,
     cluster_column_slices = FALSE,
     cluster_rows = FALSE,
@@ -412,7 +410,7 @@ make_pgmc_summary_heatmap <- function(fluids, output_path, width = 17, height = 
     row_names_gp = gpar(fontsize = 7),
     column_names_gp = gpar(fontsize = 8),
     column_names_rot = 45,
-    column_title = if (multi) as.character(fluids) else paste0("PGMC calculated closeness to phenoconversion in ", fluids),
+    column_title = if (multi) as.character(fluids) else paste0("PGMC estimated proximity to phenoconversion in ", fluids),
     column_title_gp = gpar(fontsize = 12, fontface = "bold"),
     # extra column: in how many of the models the PGMC was selected
     right_annotation = if (show_freq) rowAnnotation(
@@ -425,11 +423,11 @@ make_pgmc_summary_heatmap <- function(fluids, output_path, width = 17, height = 
       annotation_name_gp = gpar(fontsize = 9, fontface = "bold")
     ) else NULL,
     heatmap_legend_param = if (continuous) list(
-      title = "Calculated closeness\nto phenoconversion",
-      at = c(score_lim[1], 0, score_lim[2]),
-      labels = c("Lower", "Boundary (0)", "Higher")
+      title = "Estimated proximity\nto phenoconversion",
+      at = legend_at,
+      labels = sprintf("%.1f", legend_at)      # the score values on the colour bar
     ) else list(
-      title = "Closeness to\nphenoconversion\n(score > 0)",
+      title = "Estimated proximity\nto phenoconversion\n(score > 0)",
       at = c("0", "1"),
       labels = c("Score <= 0", "Score > 0")
     )
@@ -502,8 +500,8 @@ ht_all_cont    <- make_pgmc_summary_heatmap(c("SERUM", "PLASMA", "CSF"),
                                             "plots/venn/PGMC_summary_heatmap_all_fluids_continuous.pdf",
                                             width = 17, show_freq = TRUE, continuous = TRUE)
 ht_serum_cont  <- make_pgmc_summary_heatmap("SERUM",  "plots/venn/PGMC_summary_heatmap_SERUM_continuous.pdf",
-                                            width = 10, continuous = TRUE, show_values = TRUE)
+                                            width = 10, continuous = TRUE)
 ht_plasma_cont <- make_pgmc_summary_heatmap("PLASMA", "plots/venn/PGMC_summary_heatmap_PLASMA_continuous.pdf",
-                                            width = 10, continuous = TRUE, show_values = TRUE)
+                                            width = 10, continuous = TRUE)
 ht_csf_cont    <- make_pgmc_summary_heatmap("CSF",    "plots/venn/PGMC_summary_heatmap_CSF_continuous.pdf",
-                                            width = 10, continuous = TRUE, show_values = TRUE)
+                                            width = 10, continuous = TRUE)

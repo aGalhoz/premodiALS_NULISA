@@ -1268,9 +1268,9 @@ run_ALS_signature_workflow_CNS_IMMUNE <- function(
             legend.position = "right"
           ) +
           labs(
-            x = "Calculated closeness to phenoconversion\n(ALS vs CTR model score; 0 = decision boundary)",
+            x = "Estimated proximity to phenoconversion\n(ALS vs CTR model score)",
             y = NULL,
-            title = paste0("Calculated closeness to phenoconversion (", model_type, ", ", fluid, ")")))
+            title = paste0("Estimated proximity to phenoconversion (", model_type, ", ", fluid, ")")))
       
     })
   }
@@ -1365,7 +1365,7 @@ run_heatmap_signature_CNS_IMMUNE <- function(
   # row annotations
   ha <- rowAnnotation(
     Group = data_heatmap$type,
-    Closeness = data_heatmap$ALS_risk_score,
+    Estimated_proximity = data_heatmap$ALS_risk_score,
     IDs_interest = ifelse(data_heatmap$ParticipantCode %in% highlight_ids,
                           "yes","no"),
     Disease_onset = data_heatmap$SiteDiseaseOnset,
@@ -1377,7 +1377,7 @@ run_heatmap_signature_CNS_IMMUNE <- function(
     na_col = "white",
     col = list(
       Group = group_colors,
-      Closeness = score_col,
+      Estimated_proximity = score_col,
       Disease_onset = c("spinal"="#3498db",
                         "bulbar"="#e74c3c",
                         "other"="grey"),
@@ -3429,8 +3429,9 @@ p_cmp <- ggplot(both, aes(x = `risk_score_NEFL only`, y = `risk_score_Kim et al.
     data = both %>% filter(`at_risk_NEFL only` | `at_risk_Kim et al. (10 proteins)`),
     aes(label = pub_id(ParticipantCode)), size = 3, max.overlaps = Inf) +
   theme_classic(base_size = 12) +
-  labs(x = "Risk score, NEFL only", y = "Risk score, Kim et al. signature",
-       title = "PGMC risk scores in plasma")
+  labs(x = "Estimated proximity to phenoconversion, NEFL only",
+       y = "Estimated proximity to phenoconversion, Kim et al. signature",
+       title = "PGMC estimated proximity to phenoconversion in plasma")
 print(p_cmp)
 save_fig(paste0(sig_dir, "PGMC_risk_NEFL_vs_Kim_PLASMA.pdf"), p_cmp, width = 6, height = 5)
 
@@ -3449,7 +3450,7 @@ rownames(status_all) <- rownames(score_all_mat) <- st$ParticipantCode
 
 n_full <- rowSums(status_all > 0, na.rm = TRUE)
 ord <- order(-n_full, -rowMeans(score_all_mat, na.rm = TRUE))
-print(table(`models with closeness > 0` = n_full))
+print(table(`models with score > 0` = n_full))
 
 status_num <- status_all[ord, ]
 score_ord <- score_all_mat[ord, ]
@@ -3461,7 +3462,7 @@ models_col <- c("0" = "white", "1" = "#F3E5EE", "2" = "#E8CDE0", "3" = "#D9A6C8"
 
 ht_risk <- Heatmap(
   status_chr,
-  name = "Closeness to\nphenoconversion",
+  name = "Estimated proximity\nto phenoconversion\n(score > 0)",
   col = risk_col,
   na_col = "white",
   cluster_rows = FALSE,
@@ -3478,8 +3479,8 @@ ht_risk <- Heatmap(
     annotation_name_gp = gpar(fontsize = 9, fontface = "bold"),
     simple_anno_size = unit(0.35, "cm")),
   right_annotation = rowAnnotation(
-    `Models with closeness > 0` = as.character(n_full[ord]),
-    col = list(`Models with closeness > 0` = models_col),
+    `Models with score > 0` = as.character(n_full[ord]),
+    col = list(`Models with score > 0` = models_col),
     annotation_name_gp = gpar(fontsize = 9, fontface = "bold"),
     simple_anno_size = unit(0.35, "cm")),
   heatmap_legend_param = list(at = c("0", "1", "2"),
@@ -3489,7 +3490,7 @@ ht_risk <- Heatmap(
     v <- pindex(score_ord, i, j)
     grid.text(ifelse(is.na(v), "", sprintf("%.1f", v)), x, y, gp = gpar(fontsize = 6))
   },
-  column_title = "PGMC calculated closeness to phenoconversion in plasma",
+  column_title = "PGMC estimated proximity to phenoconversion in plasma",
   column_title_gp = gpar(fontsize = 11, fontface = "bold")
 )
 
@@ -3506,9 +3507,11 @@ cont_col <- circlize::colorRamp2(
   c(cont_lim[1], 0, mean(c(0, cont_lim[2])), cont_lim[2]),
   c("#F7F0F5", "#EBD3E3", "#AD5291", "#4A1238"))
 
+cont_at <- c(cont_lim[1], 0, cont_lim[2])   # minimum, 0 (decision boundary), maximum
+
 ht_risk_cont <- Heatmap(
   score_ord,
-  name = "Calculated closeness\nto phenoconversion",
+  name = "Estimated proximity\nto phenoconversion",
   col = cont_col,
   na_col = "white",
   cluster_rows = FALSE,
@@ -3524,13 +3527,9 @@ ht_risk_cont <- Heatmap(
     col = list(Converter = c(Yes = "black", No = "white")),
     annotation_name_gp = gpar(fontsize = 9, fontface = "bold"),
     simple_anno_size = unit(0.35, "cm")),
-  heatmap_legend_param = list(at = c(cont_lim[1],cont_lim[2]),
-                              labels = c("Lower", "Higher")),
-  layer_fun = function(j, i, x, y, w, h, fill) {
-    v <- pindex(score_ord, i, j)
-    grid.text(ifelse(is.na(v), "", sprintf("%.1f", v)), x, y, gp = gpar(fontsize = 6))
-  },
-  column_title = "PGMC calculated closeness to phenoconversion in plasma",
+  heatmap_legend_param = list(at = cont_at,
+                              labels = sprintf("%.1f", cont_at)),   # score values on the colour bar
+  column_title = "PGMC estimated proximity to phenoconversion in plasma",
   column_title_gp = gpar(fontsize = 11, fontface = "bold")
 )
 
@@ -3729,8 +3728,8 @@ save_fig(paste0(sig_dir, "NEFL_vs_pTau181_PLASMA.pdf"), p_scatter, width = 7, he
 
 # (2) adjusted values 
 p_scatter_adj <- group_scatter(sc_adj,
-                               paste0("NEFL (NPQ adjusted"),
-                               paste0("pTau-181 (NPQ adjusted)"),
+                               "NEFL (NPQ adjusted)",
+                               "pTau-181 (NPQ adjusted)",
                                "NEFL vs pTau-181 in plasma (adjusted)")
 print(p_scatter_adj)
 save_fig(paste0(sig_dir, "NEFL_vs_pTau181_PLASMA_adjusted.pdf"), p_scatter_adj, width = 7, height = 7.4)
