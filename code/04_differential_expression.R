@@ -166,7 +166,7 @@ volcano_plot_pvalue <- function(
   label_y_pos <- -log10(fdr) - (y_max * 0.02)    # Just slightly beloew the FDR line
   
   ggplot(df, aes_string(log2fc, "log10_padj")) +
-    geom_point(aes(color = DE, size = log10_padj), alpha = 0.6) +
+    geom_point(aes(color = DE), size = 2.5, alpha = 0.6) + # size = log10_padj
     scale_color_manual(
       name = "P-value < 0.05", 
       values = colors,
@@ -178,7 +178,8 @@ volcano_plot_pvalue <- function(
     # Highlight specific points
     geom_point(
       data = df %>% filter(Target %in% label_targets),
-      aes(size = log10_padj, color = "Sign. Proteins"), 
+      aes(color = "Sign. Proteins"), # aes(size = log10_padj)
+      size = 2.5, 
       shape = 19) +
     scale_color_manual(
       name = "ANOVA & P-value < 0.05", 
@@ -188,7 +189,8 @@ volcano_plot_pvalue <- function(
     # Label specific points
     geom_text_repel(
       data = df %>% filter(Target %in% label_targets),
-      aes(label = Target, size = 4),
+      aes(label = Target), 
+      size = 5,
       color = target_color,
       max.overlaps = 40,
       box.padding = 0.5,
@@ -271,7 +273,7 @@ for (tissue in tissues) {
 ###### VOLCANO PLOTS 
 ## 1: ALS vs CTR 
 volcano_plots <- list()
-colors_v <- c('CTR' = "#C25F3D", 'ns' = 'lightgrey', 'ALS'= "#3da0c2")
+colors_v <- c('CTR' = "#3da0c2", 'ns' = 'lightgrey', 'ALS'= "#3da0c2")
 
 for (tissue in tissues) {
   message(paste("Generating volcano plots for:", tissue))
@@ -333,6 +335,7 @@ grid.arrange(
   volcano_plots$CSF$pv_adj,    volcano_plots$CSF$adj,
   nrow = 3, ncol = 2)
 dev.off()
+
 volcano_plots_ALS_CTR = volcano_plots
 
 ## 2: ALS vs PGMC 
@@ -538,7 +541,7 @@ volcano_plots_ALS_PGMC = volcano_plots
 
 ## 5: PGMC vs CTR 
 volcano_plots <- list()
-colors_v <- c('CTR' = "#C25F3D", 'ns' = 'lightgrey', 'PGMC'= "#3da0c2")
+colors_v <- c('CTR' = "#3da0c2", 'ns' = 'lightgrey', 'PGMC'= "#3da0c2")
 
 for (tissue in tissues) {
   message(paste("Generating volcano plots for:", tissue))

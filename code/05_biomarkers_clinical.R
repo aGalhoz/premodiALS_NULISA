@@ -5,11 +5,12 @@
 ###############################################################################
 
 # 1. Define the interesting protein lists
-targets_cns <- c("NEFH", "NEFL", "MAPT", "GDNF", "FABP3", "TAFA5", "pTau-181", "pTau-231", "pTau-217",
-                 "HTT","TARDBP")
-targets_immune <- c("TAFA5", "CX3CL1", "CEACAM5", "VEGFD", "IL7", "IL27", "IL33","IFNG")
+targets_cns <- c("NEFH", "NEFL", "MAPT", "FABP3", "TAFA5", "pTau-181", "pTau-231", "pTau-217")
+targets_immune <- c("TAFA5", "CX3CL1", "PGF", "VEGFD", "IL7", "IL27", "IL33","IFNG")
 
-current_targets <- targets_cns
+target_order <- c("IL7", "IL27", "IL33","IFNG", "VEGFD","PGF","TAFA5", "CX3CL1")
+
+current_targets <- targets_immune
 
 # 2. Loop over fluids to check site of onset stratification
 comparisons <- list( c("spinal", "bulbar"))
@@ -22,7 +23,7 @@ for (fluid_name in names(results_ALL)) {
   
   plot_data <- inner_join(fluid_data, site_onset) %>%
     mutate(SiteDiseaseOnset = tolower(trimws(as.character(SiteDiseaseOnset)))) %>% 
-    filter(Target %in% current_targets) %>%
+    filter(Target %in% target_order) %>%     mutate(Target = factor(Target, levels = target_order)) %>%
     filter(SiteDiseaseOnset %in% c("spinal", "bulbar")) %>% 
     filter(!is.na(NPQ_adj))
   
@@ -35,12 +36,14 @@ for (fluid_name in names(results_ALL)) {
   p <- ggplot(plot_data, aes(x = SiteDiseaseOnset, y = NPQ_adj, fill = SiteDiseaseOnset)) +
     geom_boxplot(outlier.shape = NA, alpha = 0.7, width = 0.6) +
     geom_jitter(width = 0.2, size = 1, alpha = 0.4) +
-    facet_wrap(~Target, scales = "free", ncol = 3) +
+    facet_wrap(~Target, scales = "free", ncol = 2) +
     stat_compare_means(comparisons = comparisons, 
                        method = "wilcox.test", 
                        label = "p.format",      
                        size = 3.5,              
-                       label.y.npc = 0.9) +        
+                       label.y.npc = 0.95) +   
+    scale_y_continuous(
+      expand = expansion(mult = c(0.05, 0.20))) +        
     theme_classic(base_size = 12) +
     scale_fill_manual(values = c("spinal" = "#3498db", "bulbar" = "#e74c3c")) +
     labs(
@@ -60,7 +63,7 @@ for (fluid_name in names(results_ALL)) {
   
   ggsave(file_name, 
          plot = p, 
-         width = 10, 
+         width = 5, 
          height = 10, 
          units = "in", 
          device = cairo_pdf)
@@ -77,7 +80,7 @@ for (fluid_name in names(results_ALL)) {
   
   # Merge with clinical data 
   plot_data <- inner_join(fluid_data, ALSFRS_NULISA_V0) %>%
-    filter(Target %in% current_targets) %>%
+    filter(Target %in% target_order) %>%     mutate(Target = factor(Target, levels = target_order)) %>%
     filter(type == "ALS") %>%
     filter(!is.na(ALSFRS_1) & !is.na(NPQ_adj))
   
@@ -91,7 +94,7 @@ for (fluid_name in names(results_ALL)) {
     geom_point(color = "grey40", alpha = 0.5, size = 1.5) +
     geom_smooth(method = "lm", color = "#001f3f", fill = "#001f3f", 
                 alpha = 0.1, linewidth = 1) +
-    facet_wrap(~Target, scales = "free_y", ncol = 3) +
+    facet_wrap(~Target, scales = "free_y", ncol = 2) +
     stat_cor(method = "spearman", 
              aes(label = paste(..r.label.., ..p.label.., sep = "~`,`~")),
              label.x.npc = "left", label.y.npc = "top", size = 3.2) + 
@@ -114,7 +117,7 @@ for (fluid_name in names(results_ALL)) {
   
   ggsave(file_name, 
          plot = p, 
-         width = 12, 
+         width = 5, 
          height = 10, 
          units = "in", 
          device = cairo_pdf)
@@ -131,7 +134,7 @@ for (fluid_name in names(results_ALL)) {
   
   # Merge with clinical data 
   plot_data <- inner_join(fluid_data, disease_duration) %>%
-    filter(Target %in% current_targets) %>%
+    filter(Target %in% target_order) %>%     mutate(Target = factor(Target, levels = target_order)) %>%
     filter(type == "ALS") %>%
     filter(Visit == "V0") %>%
     filter(!is.na(`Disease duration`) & !is.na(NPQ_adj))
@@ -146,7 +149,7 @@ for (fluid_name in names(results_ALL)) {
     geom_point(color = "grey40", alpha = 0.5, size = 1.5) +
     geom_smooth(method = "lm", color = "#001f3f", fill = "#001f3f", 
                 alpha = 0.1, linewidth = 1) +
-    facet_wrap(~Target, scales = "free_y", ncol = 3) +
+    facet_wrap(~Target, scales = "free_y", ncol = 2) +
     stat_cor(method = "spearman", 
              aes(label = paste(..r.label.., ..p.label.., sep = "~`,`~")),
              label.x.npc = "left", label.y.npc = "top", size = 3.2) + 
@@ -169,7 +172,7 @@ for (fluid_name in names(results_ALL)) {
   
   ggsave(file_name, 
          plot = p, 
-         width = 12, 
+         width = 5, 
          height = 10, 
          units = "in", 
          device = cairo_pdf)
@@ -197,7 +200,7 @@ for (mode_name in names(group_modes)) {
     
     plot_data <- inner_join(fluid_data, Sex_age_all_participants) %>%  
       filter(SampleMatrixType == fluid_name) %>%
-      filter(Target %in% current_targets) %>%
+      filter(Target %in% target_order) %>%     mutate(Target = factor(Target, levels = target_order)) %>%
       filter(type %in% groups_to_keep) %>%
       filter(!is.na(age) & !is.na(NPQ)) %>%
       select(age,NPQ,ParticipantCode,PatientID,Target,SampleName) %>%
@@ -211,7 +214,7 @@ for (mode_name in names(group_modes)) {
       geom_point(color = "grey40", alpha = 0.5, size = 1.5) +
       geom_smooth(method = "lm", color = "#001f3f", fill = "#001f3f",
                   alpha = 0.1, linewidth = 1) +
-      facet_wrap(~Target, scales = "free_y", ncol = 3) +
+      facet_wrap(~Target, scales = "free_y", ncol = 2) +
       stat_cor(method = "spearman",
                aes(label = paste(..r.label.., ..p.label.., sep = "~`,`~")),
                label.x.npc = "left", label.y.npc = "top", size = 3.2) +
@@ -232,7 +235,7 @@ for (mode_name in names(group_modes)) {
     
     file_name <- paste0("plots/correlations/Age_Corr_", mode_name, "_", fluid_name, ".pdf")
     
-    ggsave(file_name, plot = p, width = 12, height = 10, device = cairo_pdf)
+    ggsave(file_name, plot = p, width = 5, height = 10, device = cairo_pdf)
     
     message("Saved: ", file_name)
   }
@@ -253,7 +256,7 @@ for (mode_name in names(group_modes)) {
     
     plot_data <- inner_join(fluid_data, Sex_age_all_participants) %>%
       filter(SampleMatrixType == fluid_name) %>%
-      filter(Target %in% current_targets) %>%
+      filter(Target %in% target_order) %>%     mutate(Target = factor(Target, levels = target_order)) %>%
       filter(type %in% groups_to_keep) %>%
       filter(sex %in% c("M", "F")) %>%
       filter(!is.na(NPQ)) %>%
@@ -266,12 +269,14 @@ for (mode_name in names(group_modes)) {
     p <- ggplot(plot_data, aes(x = Sex, y = NPQ, fill = Sex)) +
       geom_boxplot(outlier.shape = NA, alpha = 0.7, width = 0.6) +
       geom_jitter(width = 0.2, size = 1, alpha = 0.4) +
-      facet_wrap(~Target, scales = "free_y", ncol = 3) +
+      facet_wrap(~Target, scales = "free_y", ncol = 2) +
       stat_compare_means(comparisons = comparisons,
                          method = "wilcox.test",
                          label = "p.format",
                          size = 3.5,
-                         label.y.npc = 0.9) +
+                         label.y.npc = 0.95) +   
+      scale_y_continuous(
+        expand = expansion(mult = c(0.05, 0.20))) +
       theme_classic(base_size = 12) +
       scale_fill_manual(values = c("male" = "#4c72b0", "female" = "#dd8452")) +
       labs(
@@ -290,7 +295,7 @@ for (mode_name in names(group_modes)) {
     
     file_name <- paste0("plots/correlations/Sex_", mode_name, "_", fluid_name, ".pdf")
     
-    ggsave(file_name, plot = p, width = 10, height = 10, device = cairo_pdf)
+    ggsave(file_name, plot = p, width = 5, height = 10, device = cairo_pdf)
     
     message("Saved: ", file_name)
   }
